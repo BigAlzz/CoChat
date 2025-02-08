@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Interface</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --neon-green: #0f0;
+            --dark-green: #006400;
+            --darker-bg: #0a0a0a;
+            --panel-bg: #111111;
+            --text: #ffffff;
+            --error: #ff0000;
+            --success: #00ff00;
+            --glow: 0 0 10px var(--neon-green);
+        }
+
+        body {
+            background-color: var(--darker-bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .control-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-green);
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px;
+            box-shadow: var(--glow);
+        }
+
+        .chat-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-green);
+            border-radius: 5px;
+            margin: 5px;
+            box-shadow: var(--glow);
+            height: calc(100vh - 100px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-window {
+            flex: 1;
+            background: rgba(0, 100, 0, 0.1);
+            border: 1px solid var(--dark-green);
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 12px 30px 12px 12px;
+            margin: 8px;
+            border-radius: 8px;
+            max-width: 85%;
+            word-wrap: break-word;
+            cursor: grab;
+            position: relative;
+            transition: opacity 0.2s;
+        }
+
+        .user-message {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 3px solid var(--neon-green);
+            margin-left: auto;
+            margin-right: 8px;
+        }
+
+        .assistant-message {
+            background: rgba(0, 100, 0, 0.1);
+            border-left: 3px solid var(--dark-green);
+            margin-right: auto;
+            margin-left: 8px;
+        }
+
+        .thinking-message {
+            font-style: italic;
+            color: var(--neon-green);
+            opacity: 0.8;
+            background: rgba(0, 100, 0, 0.05);
+        }
+
+        .error-message {
+            background: rgba(255, 0, 0, 0.1);
+            border-left: 3px solid var(--error);
+            color: var(--error);
+        }
+
+        .btn-cyber {
+            background: transparent;
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+            padding: 5px 15px;
+            border-radius: 3px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 1px;
+        }
+
+        .btn-cyber:hover {
+            background: var(--neon-green);
+            color: var(--darker-bg);
+            box-shadow: var(--glow);
+        }
+
+        select, input, textarea {
+            width: 100%;
+            background-color: var(--panel-bg) !important;
+            border: 1px solid var(--neon-green) !important;
+            color: var(--text) !important;
+            border-radius: 3px !important;
+            padding: 8px 12px !important;
+            margin-bottom: 5px !important;
+        }
+
+        .cyber-pill {
+            background-color: var(--panel-bg) !important;
+            border: 1px solid var(--neon-green) !important;
+            color: var(--neon-green) !important;
+        }
+
+        /* Add hover effect */
+        select:hover, input:hover, textarea:hover {
+            border-color: var(--neon-green) !important;
+            box-shadow: 0 0 5px var(--neon-green) !important;
+        }
+
+        .modal-content {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-green);
+        }
+
+        .modal-header, .modal-footer {
+            border-color: var(--dark-green);
+        }
+
+        .status-indicator {
+            background: transparent;
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+            padding: 5px 15px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            letter-spacing: 1px;
+        }
+
+        /* Matrix-style scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--panel-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--dark-green);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-green);
+        }
+
+        /* Update the assistantsContainer style */
+        #assistantsContainer {
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+            padding: 10px;
+            overflow-x: hidden;
+            height: calc(100vh - 100px);
+            width: 100%;
+        }
+
+        .chat-panel {
+            flex: 1;
+            min-width: 0;
+            height: 100%;
+            margin: 0;
+            transition: all 0.3s ease;
+        }
+
+        .stop-button {
+            background-color: var(--error) !important;
+            border-color: var(--error) !important;
+            color: var(--text) !important;
+        }
+
+        .stop-button:hover {
+            background-color: darkred !important;
+            box-shadow: 0 0 10px var(--error) !important;
+        }
+
+        .sequential-mode .chat-panel:not(:first-child) .prompt-input:disabled {
+            background-color: rgba(0, 0, 0, 0.2) !important;
+            cursor: not-allowed;
+        }
+        
+        .sequential-mode .chat-panel:not(:first-child) .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .sequential-mode .chat-panel .panel-header h5 {
+            position: relative;
+        }
+        
+        .sequential-mode .chat-panel:not(:first-child) .panel-header h5::before {
+            content: '⌛';
+            position: absolute;
+            left: -20px;
+            opacity: 0.7;
+        }
+
+        /* Add this function to monitor sequential responses */
+        .sequential .chat-panel:not(:first-child) textarea:disabled,
+        .sequential .chat-panel:not(:first-child) button:disabled {
+            background-color: rgba(0, 0, 0, 0.2) !important;
+            cursor: not-allowed !important;
+            border-color: var(--dark-green) !important;
+        }
+
+        .sequential .chat-panel[data-waiting="true"] .panel-header h5::before {
+            content: '⌛';
+            margin-right: 8px;
+            color: var(--neon-green);
+        }
+
+        .sequential .chat-panel[data-ready="true"] .panel-header h5::before {
+            content: '✓';
+            margin-right: 8px;
+            color: var(--success);
+        }
+
+        .model-config {
+            margin-bottom: 10px;
+            border: 1px solid var(--neon-green);
+            border-radius: 5px;
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .model-config-header {
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .model-config-header:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .model-config-header .model-select {
+            flex: 1;
+            margin: 0;
+            z-index: 1;
+        }
+
+        .toggle-icon {
+            color: var(--neon-green);
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .model-config-content {
+            padding: 10px;
+            border-top: 1px solid var(--neon-green);
+            display: none;
+        }
+
+        .model-config.expanded .model-config-content {
+            display: block;
+        }
+
+        .model-config.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .reasoning {
+            background: rgba(0, 100, 0, 0.15);
+            border-left: 2px solid var(--neon-green);
+            padding: 10px;
+            margin: 5px 0;
+            font-style: italic;
+        }
+
+        .config-toggle {
+            padding: 2px 8px;
+            margin-left: 5px;
+        }
+
+        .temperature-control {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-range {
+            height: 4px;
+            background: var(--dark-green);
+        }
+
+        .form-range::-webkit-slider-thumb {
+            background: var(--neon-green);
+        }
+
+        .form-check-input:checked {
+            background-color: var(--neon-green);
+            border-color: var(--neon-green);
+        }
+
+        .reasoning-block, .response-block {
+            background: rgba(0, 100, 0, 0.1);
+            border-left: 3px solid var(--neon-green);
+            margin-bottom: 10px;
+            padding: 12px;
+            border-radius: 4px;
+        }
+
+        .reasoning-block {
+            border-color: var(--dark-green);
+            background: rgba(0, 100, 0, 0.05);
+        }
+
+        .response-block {
+            border-color: var(--neon-green);
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .reasoning-header, .response-header {
+            font-weight: bold;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+        }
+
+        .reasoning-header {
+            color: var(--dark-green);
+        }
+
+        .response-header {
+            color: var(--neon-green);
+        }
+
+        .reasoning-content {
+            font-style: italic;
+            color: #aaa;
+            line-height: 1.4;
+        }
+
+        .response-content {
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        /* Add hover effects for selects */
+        .posture-select:hover, .role-select:hover {
+            box-shadow: 0 0 8px var(--neon-green);
+        }
+
+        /* Add icons for different roles */
+        .role-select option[value="summarizer"]::before {
+            content: "📝 ";
+        }
+
+        .role-select option[value="reporter"]::before {
+            content: "📊 ";
+        }
+
+        .role-select option[value="programmer"]::before {
+            content: "💻 ";
+        }
+
+        /* Add more role icons as needed */
+
+        /* Add to existing styles */
+        .message-block {
+            position: relative;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            background: rgba(0, 100, 0, 0.1);
+            border-left: 3px solid var(--neon-green);
+            transition: all 0.3s ease;
+        }
+
+        .message-block.dragging {
+            opacity: 0.5;
+            cursor: move;
+        }
+
+        .message-block.drag-over {
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+        }
+
+        .message-header {
+            padding: 8px 12px;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+            color: var(--neon-green);
+        }
+
+        .message-content {
+            padding: 12px;
+            line-height: 1.4;
+        }
+
+        .reasoning-block {
+            background: rgba(0, 100, 0, 0.05);
+            border-left-color: var(--dark-green);
+        }
+
+        .reasoning-block .message-header {
+            color: var(--dark-green);
+        }
+
+        .response-block {
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .drag-handle {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            cursor: move;
+            opacity: 0.5;
+            transition: opacity 0.3s ease;
+            color: var(--neon-green);
+            user-select: none;
+        }
+
+        .drag-handle:hover {
+            opacity: 1;
+        }
+
+        .message-block:hover .drag-handle {
+            opacity: 0.8;
+        }
+
+        /* Add after existing message styles */
+        .message::before {
+            content: '⋮⋮';
+            position: absolute;
+            right: 5px;
+            top: 5px;
+            opacity: 0;
+            color: var(--neon-green);
+            transition: opacity 0.2s;
+        }
+
+        .message:hover::before {
+            opacity: 0.7;
+        }
+
+        .chat-window.drag-over {
+            border: 2px dashed var(--neon-green);
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .reasoning-message {
+            background: rgba(0, 100, 0, 0.05);
+            border-left: 3px solid var(--dark-green);
+            font-style: italic;
+        }
+
+        .answer-message {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 3px solid var(--neon-green);
+        }
+
+        .reasoning-header, .answer-header {
+            color: var(--neon-green);
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stream-toggle {
+            cursor: pointer;
+        }
+
+        .form-check-label {
+            color: var(--neon-green);
+            cursor: pointer;
+        }
+
+        .form-switch .form-check-input {
+            background-color: var(--panel-bg);
+            border-color: var(--neon-green);
+        }
+
+        .form-switch .form-check-input:checked {
+            background-color: var(--neon-green);
+            border-color: var(--neon-green);
+        }
+
+        .form-switch .form-check-input:focus {
+            box-shadow: 0 0 0 0.2rem rgba(0, 255, 0, 0.25);
+        }
+
+        /* Add these styles */
+        .message {
+            position: relative;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: transparent;
+            border: none;
+            color: var(--neon-green);
+            cursor: pointer;
+            padding: 2px 5px;
+            font-size: 14px;
+        }
+
+        .message:hover .copy-button {
+            opacity: 1;
+        }
+
+        .copy-button:hover {
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="control-panel">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <select id="processingMode" class="cyber-pill">
+                        <option value="individual">Individual Assistant</option>
+                        <option value="sequential">Sequential Processing</option>
+                        <option value="parallel">Parallel Processing</option>
+                    </select>
+                </div>
+                <div class="col-md-4 text-center">
+                    <span class="status-indicator">
+                        <span id="connectionStatus">Connected to LM Studio</span>
+                    </span>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn-cyber me-2" id="addAssistant">+ Add Assistant</button>
+                    <button class="btn-cyber" id="generateSummary">Summary</button>
+                    <button class="btn-cyber settings-btn" id="settingsButton" onclick="openSettings()">⚙️ Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="assistantsContainer">
+            <!-- Template for assistant panel -->
+            <div class="chat-panel" id="assistant-1">
+                <div class="panel-header">
+                    <h5>Assistant 1</h5>
+                    <button class="close-button" onclick="removeAssistant('assistant-1')">×</button>
+                </div>
+                <div class="model-config">
+                    <div class="model-config-header" onclick="toggleConfig(this.parentElement)">
+                        <div class="d-flex align-items-center flex-grow-1">
+                            <select class="model-select cyber-pill" onchange="handleModelChange(this)">
+                                <option value="">Select Model</option>
+                            </select>
+                            <span class="toggle-icon ms-2">▼</span>
+                        </div>
+                    </div>
+                    <div class="model-config-content">
+                        <div class="temperature-control mb-2">
+                            <label>Temperature: <span class="temp-value">0.7</span></label>
+                            <input type="range" class="form-range" min="0" max="2" step="0.1" value="0.7">
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input stream-toggle" type="checkbox" id="streamToggle-${id}">
+                                <label class="form-check-label" for="streamToggle-${id}">Enable Streaming</label>
+                            </div>
+                            <select class="context-length cyber-pill" style="width: auto">
+                                <option value="8192" selected>8K Context</option>
+                                <option value="16384">16K Context</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-window" id="chat-1"></div>
+                <div class="panel-controls">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <select class="posture-select cyber-pill">
+                                <option value="academic">Academic & Scholarly</option>
+                                <option value="analytical">Analytical & Methodical</option>
+                                <option value="casual">Casual & Friendly</option>
+                                <option value="concise">Concise & Direct</option>
+                                <option value="creative">Creative & Imaginative</option>
+                                <option value="default">Default Posture</option>
+                                <option value="diplomatic">Diplomatic & Tactful</option>
+                                <option value="empathetic">Empathetic & Supportive</option>
+                                <option value="formal">Formal & Professional</option>
+                                <option value="instructive">Instructive & Educational</option>
+                                <option value="professional">Professional</option>
+                                <option value="technical">Technical & Precise</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="role-select cyber-pill">
+                                <option value="analyst">Data Analyst</option>
+                                <option value="assistant">General Assistant</option>
+                                <option value="coder">Code Assistant</option>
+                                <option value="consultant">Consultant</option>
+                                <option value="expert">Domain Expert</option>
+                                <option value="researcher">Researcher</option>
+                                <option value="teacher">Teacher</option>
+                                <option value="technical">Technical Expert</option>
+                                <option value="translator">Translator</option>
+                                <option value="tutor">Tutor</option>
+                                <option value="writer">Writer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="file" style="display: none" id="file-1">
+                            <label for="file-1" class="btn-cyber w-100">Upload File</label>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <textarea class="prompt-input" rows="3" placeholder="Enter your message..."></textarea>
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn-cyber w-100 send-button">Send</button>
+                            <button class="btn-cyber stop-button" style="display: none;">Stop</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add this modal HTML right after the container-fluid div -->
+    <div class="modal fade" id="settingsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="lmStudioUrl" class="form-label">LM Studio Server URL</label>
+                        <input type="text" class="form-control" id="lmStudioUrl" value="http://192.168.50.89:1234">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cyber" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn-cyber" onclick="saveSettings()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Keep track of assistant count
+        let assistantCount = 1;
+
+        // Function to create new assistant panel
+        function createAssistantPanel(id) {
+            // If there are no panels, recreate the first panel template
+            if (document.querySelectorAll('.chat-panel').length === 0) {
+                const newFirstPanel = createBasePanelTemplate(1);
+                document.getElementById('assistantsContainer').appendChild(newFirstPanel);
+                setupMessageHandlers(newFirstPanel);
+                populateModelSelect(newFirstPanel.querySelector('.model-select'));
+                return newFirstPanel;
+            }
+
+            // Create new panel based on template
+            const newPanel = createBasePanelTemplate(id);
+            setupMessageHandlers(newPanel);
+            populateModelSelect(newPanel.querySelector('.model-select'));
+            return newPanel;
+        }
+
+        // Add this new function to create a base panel template
+        function createBasePanelTemplate(id) {
+            const panel = document.createElement('div');
+            panel.className = 'chat-panel';
+            panel.id = `assistant-${id}`;
+            
+            panel.innerHTML = `
+                <div class="panel-header">
+                    <h5>Assistant ${id}</h5>
+                    <button class="close-button" onclick="removeAssistant('assistant-${id}')">×</button>
+                </div>
+                <div class="model-config">
+                    <div class="model-config-header" onclick="toggleConfig(this.parentElement)">
+                        <div class="d-flex align-items-center flex-grow-1">
+                            <select class="model-select cyber-pill" onchange="handleModelChange(this)">
+                                <option value="">Select Model</option>
+                            </select>
+                            <span class="toggle-icon ms-2">▼</span>
+                        </div>
+                    </div>
+                    <div class="model-config-content">
+                        <div class="temperature-control mb-2">
+                            <label>Temperature: <span class="temp-value">0.7</span></label>
+                            <input type="range" class="form-range" min="0" max="2" step="0.1" value="0.7">
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input stream-toggle" type="checkbox" id="streamToggle-${id}">
+                                <label class="form-check-label" for="streamToggle-${id}">Enable Streaming</label>
+                            </div>
+                            <select class="context-length cyber-pill" style="width: auto">
+                                <option value="8192" selected>8K Context</option>
+                                <option value="16384">16K Context</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-window" id="chat-${id}"></div>
+                <div class="panel-controls">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <select class="posture-select cyber-pill">
+                                <option value="academic">Academic & Scholarly</option>
+                                <option value="analytical">Analytical & Methodical</option>
+                                <option value="casual">Casual & Friendly</option>
+                                <option value="concise">Concise & Direct</option>
+                                <option value="creative">Creative & Imaginative</option>
+                                <option value="default">Default Posture</option>
+                                <option value="diplomatic">Diplomatic & Tactful</option>
+                                <option value="empathetic">Empathetic & Supportive</option>
+                                <option value="formal">Formal & Professional</option>
+                                <option value="instructive">Instructive & Educational</option>
+                                <option value="professional">Professional</option>
+                                <option value="technical">Technical & Precise</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="role-select cyber-pill">
+                                <option value="analyst">Data Analyst</option>
+                                <option value="assistant">General Assistant</option>
+                                <option value="coder">Code Assistant</option>
+                                <option value="consultant">Consultant</option>
+                                <option value="expert">Domain Expert</option>
+                                <option value="researcher">Researcher</option>
+                                <option value="teacher">Teacher</option>
+                                <option value="technical">Technical Expert</option>
+                                <option value="translator">Translator</option>
+                                <option value="tutor">Tutor</option>
+                                <option value="writer">Writer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="file" style="display: none" id="file-${id}">
+                            <label for="file-${id}" class="btn-cyber w-100">Upload File</label>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <textarea class="prompt-input" rows="3" placeholder="Enter your message..."></textarea>
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn-cyber w-100 send-button">Send</button>
+                            <button class="btn-cyber stop-button" style="display: none;">Stop</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Update the chat-window div to include drag and drop
+            panel.querySelector('.chat-window').addEventListener('dragover', (e) => e.preventDefault());
+            panel.querySelector('.chat-window').addEventListener('drop', (e) => e.preventDefault());
+            
+            // Setup drag and drop for any existing messages
+            setupMessageDragAndDrop();
+            
+            return panel;
+        }
+
+        // Handle Add Assistant button
+        document.getElementById('addAssistant').addEventListener('click', () => {
+            assistantCount++;
+            const newPanel = createAssistantPanel(assistantCount);
+            document.getElementById('assistantsContainer').appendChild(newPanel);
+            updatePanelCount();
+            adjustPanelWidths();
+            
+            // Update panel headers if in sequential mode
+            if (document.getElementById('processingMode').value === 'sequential') {
+                const panels = document.querySelectorAll('.chat-panel');
+                panels.forEach((panel, index) => {
+                    if (index > 0) {
+                        panel.querySelector('.panel-header h5').textContent = 
+                            `Assistant ${index + 1} (Processes after Assistant ${index})`;
+                    }
+                });
+            }
+        });
+
+        // Function to populate model select dropdowns
+        async function populateModelSelect(selectElement) {
+            try {
+                const response = await fetch('/models');
+                const data = await response.json();
+                
+                if (data.models) {
+                    updateConnectionStatus(true);
+                    selectElement.innerHTML = '<option value="">Select Model</option>';
+                    data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model;
+                        option.textContent = model;
+                        selectElement.appendChild(option);
+                    });
+                } else if (data.error) {
+                    updateConnectionStatus(false, data.error);
+                    console.error('Error fetching models:', data.error);
+                }
+            } catch (error) {
+                updateConnectionStatus(false, 'Failed to connect to LM Studio');
+                console.error('Error fetching models:', error);
+            }
+        }
+
+        // Populate all model selects on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.model-select').forEach(select => {
+                populateModelSelect(select);
+            });
+            updatePanelCount();
+            setupMessageHandlers(document.getElementById('assistant-1'));
+            
+            // Initialize processing mode
+            handleProcessingModeChange();
+            setupDragAndDrop();
+        });
+
+        // Function to remove assistant panel
+        function removeAssistant(assistantId) {
+            const panel = document.getElementById(assistantId);
+            if (panel) {
+                panel.style.animation = 'fadeOut 0.3s ease forwards';
+                setTimeout(() => {
+                    panel.remove();
+                    updatePanelCount();
+                    adjustPanelWidths();
+                    
+                    // If no panels left, create a new first panel
+                    if (document.querySelectorAll('.chat-panel').length === 0) {
+                        assistantCount = 1;
+                        const newPanel = createAssistantPanel(1);
+                        document.getElementById('assistantsContainer').appendChild(newPanel);
+                        updatePanelCount();
+                        adjustPanelWidths();
+                    }
+                }, 300);
+            }
+        }
+
+        // Add fadeOut animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeOut {
+                from { opacity: 1; transform: translateX(0); }
+                to { opacity: 0; transform: translateX(-20px); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Update the panel count attribute
+        function updatePanelCount() {
+            const container = document.getElementById('assistantsContainer');
+            const panelCount = container.children.length;
+            container.setAttribute('data-panels', panelCount);
+        }
+
+        // Update the setupMessageHandlers function
+        function setupMessageHandlers(panel) {
+            // Get the elements
+            const textarea = panel.querySelector('.prompt-input');
+            const sendButton = panel.querySelector('.send-button');
+            const stopButton = panel.querySelector('.stop-button');
+
+            // Reset buttons
+            stopButton.style.display = 'none';
+            sendButton.style.display = 'block';
+
+            // Add event listeners directly (no cloning needed)
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (canSendInSequentialMode(panel)) {
+                        sendMessage(panel);
+                    }
+                }
+            });
+
+            sendButton.addEventListener('click', function() {
+                if (canSendInSequentialMode(panel)) {
+                    sendMessage(panel);
+                }
+            });
+        }
+
+        // Update the sendMessage function
+        function createMessageWithCopy(content, className) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${className}`;
+            messageDiv.textContent = content;
+
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-button';
+            copyButton.innerHTML = '📋';
+            copyButton.title = 'Copy text';
+            copyButton.onclick = async (e) => {
+                e.stopPropagation();
+                try {
+                    await navigator.clipboard.writeText(content);
+                    copyButton.innerHTML = '✓';
+                    setTimeout(() => {
+                        copyButton.innerHTML = '📋';
+                    }, 1000);
+                } catch (err) {
+                    console.error('Failed to copy text:', err);
+                }
+            };
+
+            messageDiv.appendChild(copyButton);
+            return messageDiv;
+        }
+
+        function sendMessage(panel) {
+            const textarea = panel.querySelector('.prompt-input');
+            const sendButton = panel.querySelector('.send-button');
+            const stopButton = panel.querySelector('.stop-button');
+            const message = textarea.value.trim();
+            const model = panel.querySelector('.model-select').value;
+            const streamEnabled = panel.querySelector('.stream-toggle').checked;
+            const chatWindow = panel.querySelector('.chat-window');
+
+            if (!model || !message) {
+                alert('Please select a model and enter a message');
+                return;
+            }
+
+            // Create user message
+            const userMessageDiv = createMessageWithCopy(message, 'user-message');
+            chatWindow.appendChild(userMessageDiv);
+
+            // Create reasoning container
+            const reasoningDiv = document.createElement('div');
+            reasoningDiv.className = 'message assistant-message reasoning-message';
+            reasoningDiv.innerHTML = `
+                <div class="reasoning-header">Reasoning:</div>
+                <div class="reasoning-content"></div>
+                <button class="copy-button" title="Copy text">📋</button>
+            `;
+            reasoningDiv.querySelector('.copy-button').onclick = async (e) => {
+                e.stopPropagation();
+                const content = reasoningDiv.querySelector('.reasoning-content').textContent;
+                try {
+                    await navigator.clipboard.writeText(content);
+                    e.target.innerHTML = '✓';
+                    setTimeout(() => {
+                        e.target.innerHTML = '📋';
+                    }, 1000);
+                } catch (err) {
+                    console.error('Failed to copy text:', err);
+                }
+            };
+            chatWindow.appendChild(reasoningDiv);
+
+            // Create answer container
+            const answerDiv = document.createElement('div');
+            answerDiv.className = 'message assistant-message answer-message';
+            answerDiv.innerHTML = `
+                <div class="answer-header">Answer:</div>
+                <div class="answer-content"></div>
+                <button class="copy-button" title="Copy text">📋</button>
+            `;
+            answerDiv.querySelector('.copy-button').onclick = async (e) => {
+                e.stopPropagation();
+                const content = answerDiv.querySelector('.answer-content').textContent;
+                try {
+                    await navigator.clipboard.writeText(content);
+                    e.target.innerHTML = '✓';
+                    setTimeout(() => {
+                        e.target.innerHTML = '📋';
+                    }, 1000);
+                } catch (err) {
+                    console.error('Failed to copy text:', err);
+                }
+            };
+            chatWindow.appendChild(answerDiv);
+
+            // Clear input and toggle buttons
+            textarea.value = '';
+            sendButton.style.display = 'none';
+            stopButton.style.display = 'block';
+
+            // Prepare request data
+            const formData = new URLSearchParams();
+            formData.append('prompt', message);
+            formData.append('model', model);
+            formData.append('posture', panel.querySelector('.posture-select').value);
+            formData.append('role', panel.querySelector('.role-select').value);
+            formData.append('stream', streamEnabled);
+
+            if (streamEnabled) {
+                // Handle streaming response
+                fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData.toString()
+                })
+                .then(response => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    function processText(text) {
+                        if (text.includes('Reasoning:')) {
+                            const [reasoning, answer] = text.split('Answer:');
+                            reasoningDiv.querySelector('.reasoning-content').textContent = 
+                                reasoning.replace('Reasoning:', '').trim();
+                            if (answer) {
+                                answerDiv.querySelector('.answer-content').textContent = answer.trim();
+                            }
+                        } else {
+                            answerDiv.querySelector('.answer-content').textContent = text;
+                        }
+                        chatWindow.scrollTop = chatWindow.scrollHeight;
+                    }
+
+                    return new ReadableStream({
+                        start(controller) {
+                            function push() {
+                                reader.read().then(({done, value}) => {
+                                    if (done) {
+                                        controller.close();
+                                        return;
+                                    }
+                                    buffer += decoder.decode(value, {stream: true});
+                                    processText(buffer);
+                                    controller.enqueue(value);
+                                    push();
+                                });
+                            }
+                            push();
+                        }
+                    });
+                })
+                .catch(error => {
+                    answerDiv.querySelector('.answer-content').textContent = `Error: ${error.message}`;
+                    answerDiv.classList.add('error-message');
+                })
+                .finally(() => {
+                    sendButton.style.display = 'block';
+                    stopButton.style.display = 'none';
+                    setupMessageDragAndDrop();
+                });
+            } else {
+                // Handle non-streaming response (existing code)
+                fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData.toString()
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        answerDiv.remove();
+                        reasoningDiv.remove();
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'message assistant-message error-message';
+                        errorDiv.textContent = `Error: ${data.error}`;
+                        chatWindow.appendChild(errorDiv);
+                    } else {
+                        reasoningDiv.querySelector('.reasoning-content').textContent = data.response.reasoning;
+                        answerDiv.querySelector('.answer-content').textContent = data.response.answer;
+                    }
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                })
+                .catch(error => {
+                    answerDiv.remove();
+                    reasoningDiv.remove();
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'message assistant-message error-message';
+                    errorDiv.textContent = `Error: ${error.message}`;
+                    chatWindow.appendChild(errorDiv);
+                })
+                .finally(() => {
+                    sendButton.style.display = 'block';
+                    stopButton.style.display = 'none';
+                    setupMessageDragAndDrop();
+                });
+            }
+        }
+
+        // Update the message handling in sendMessage function
+        function formatDeepSeekResponse(content) {
+            // Split content into reasoning and response parts
+            const parts = content.split(/(?=Hello!|Hi!|Greetings!|Hey!)/);
+            const reasoning = parts[0]?.trim();
+            const response = parts[1]?.trim();
+            
+            let formattedHtml = '';
+            
+            if (reasoning) {
+                formattedHtml += `
+                    <div class="message-block reasoning-block" draggable="true">
+                        <div class="message-header">Reasoning Process</div>
+                        <div class="message-content">${reasoning}</div>
+                        <div class="drag-handle">⋮⋮</div>
+                    </div>
+                `;
+            }
+            
+            if (response) {
+                formattedHtml += `
+                    <div class="message-block response-block" draggable="true">
+                        <div class="message-header">Response</div>
+                        <div class="message-content">${response}</div>
+                        <div class="drag-handle">⋮⋮</div>
+                    </div>
+                `;
+            }
+            
+            return formattedHtml;
+        }
+
+        // Add this helper function to get the previous assistant's response
+        function getPreviousAssistantResponse(panel) {
+            const prevPanel = panel.previousElementSibling;
+            if (prevPanel) {
+                const prevMessages = prevPanel.querySelectorAll('.assistant-message');
+                if (prevMessages.length > 0) {
+                    return prevMessages[prevMessages.length - 1].textContent;
+                }
+            }
+            return '';
+        }
+
+        // Add this function to check if panel can send message in sequential mode
+        function canSendInSequentialMode(panel) {
+            const mode = document.getElementById('processingMode').value;
+            
+            // Non-sequential modes can always send
+            if (mode !== 'sequential') return true;
+            
+            const allPanels = Array.from(document.querySelectorAll('.chat-panel'));
+            const currentIndex = allPanels.indexOf(panel);
+            
+            // First panel can always send
+            if (currentIndex === 0) return true;
+            
+            // For other panels, check if previous panel has a response
+            const prevPanel = allPanels[currentIndex - 1];
+            const prevMessages = prevPanel.querySelectorAll('.assistant-message');
+            const canSend = prevMessages.length > 0;
+            
+            console.log(`Panel ${currentIndex + 1} can send: ${canSend}`);
+            console.log('Previous messages:', prevMessages.length);
+            
+            return canSend;
+        }
+
+        // Add window resize handler
+        window.addEventListener('resize', adjustPanelWidths);
+
+        // Settings handling
+        document.addEventListener('DOMContentLoaded', () => {
+            const settingsBtn = document.createElement('button');
+            settingsBtn.className = 'btn-cyber ms-2';
+            settingsBtn.innerHTML = '⚙️ Settings';
+            settingsBtn.onclick = () => {
+                const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+                // Load current server URL, defaulting to the correct LM Studio address
+                document.getElementById('lmStudioUrl').value = 
+                    localStorage.getItem('lmStudioUrl') || 
+                    'http://192.168.50.89:1234';  // Correct LM Studio address
+                modal.show();
+            };
+            
+            document.querySelector('.control-panel .text-end').prepend(settingsBtn);
+
+            // Save settings
+            document.getElementById('saveSettings').onclick = async () => {
+                const url = document.getElementById('lmStudioUrl').value.trim();
+                
+                try {
+                    const response = await fetch('/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ lm_url: url })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        localStorage.setItem('lmStudioUrl', data.lm_url);
+                        // Show success message
+                        alert('Settings saved successfully!');
+                        // Close modal
+                        bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+                        // Refresh the page to apply new settings
+                        location.reload();
+                    } else {
+                        throw new Error(data.error || 'Failed to save settings');
+                    }
+                } catch (error) {
+                    console.error('Error saving settings:', error);
+                    alert(error.message || 'Failed to save settings. Please try again.');
+                }
+            };
+        });
+
+        // Add this function to update connection status
+        function updateConnectionStatus(isConnected, message) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (isConnected) {
+                statusElement.textContent = 'Connected to LM Studio';
+                statusElement.style.color = 'var(--success)';
+            } else {
+                statusElement.textContent = message || 'Disconnected from LM Studio';
+                statusElement.style.color = 'var(--error)';
+            }
+        }
+
+        // Add periodic connection check
+        setInterval(async () => {
+            try {
+                const response = await fetch('/models');
+                const data = await response.json();
+                updateConnectionStatus(!data.error);
+            } catch (error) {
+                updateConnectionStatus(false);
+            }
+        }, 5000);  // Check every 5 seconds
+
+        // Add this function to handle processing mode changes
+        function handleProcessingModeChange(mode) {
+            const panels = document.querySelectorAll('.chat-panel');
+            mode = mode || document.getElementById('processingMode').value;
+            
+            if (mode === 'sequential') {
+                panels.forEach((panel, index) => {
+                    const input = panel.querySelector('.prompt-input');
+                    const sendButton = panel.querySelector('.send-button');
+                    
+                    if (index > 0) {
+                        // Set disabled attribute properly
+                        input.disabled = true;
+                        input.classList.add('disabled');
+                        sendButton.disabled = true;
+                        sendButton.classList.add('disabled');
+                    } else {
+                        input.disabled = false;
+                        input.classList.remove('disabled');
+                        sendButton.disabled = false;
+                        sendButton.classList.remove('disabled');
+                    }
+                });
+            } else {
+                panels.forEach(panel => {
+                    const input = panel.querySelector('.prompt-input');
+                    const sendButton = panel.querySelector('.send-button');
+                    
+                    input.disabled = false;
+                    input.classList.remove('disabled');
+                    sendButton.disabled = false;
+                    sendButton.classList.remove('disabled');
+                });
+            }
+        }
+
+        // Add event listener for mode changes
+        document.getElementById('processingMode').addEventListener('change', (e) => {
+            handleProcessingModeChange(e.target.value);
+        });
+
+        // Add this function to monitor sequential responses
+        function setupSequentialMonitoring() {
+            const mode = document.getElementById('processingMode').value;
+            if (mode !== 'sequential') return;
+
+            const panels = Array.from(document.querySelectorAll('.chat-panel'));
+            
+            // Clear any existing observers
+            panels.forEach(panel => {
+                if (panel._observer) {
+                    panel._observer.disconnect();
+                    delete panel._observer;
+                }
+            });
+            
+            // Create a MutationObserver for each panel
+            panels.forEach((panel, index) => {
+                if (index === 0) return; // Skip first panel
+
+                const observer = new MutationObserver(() => {
+                    const prevPanel = panels[index - 1];
+                    const prevMessages = prevPanel.querySelectorAll('.assistant-message');
+                    const lastMessage = prevMessages[prevMessages.length - 1];
+                    const hasResponse = prevMessages.length > 0 && lastMessage?.textContent;
+                    
+                    // Enable/disable current panel based on previous response
+                    const inputs = panel.querySelectorAll('textarea, button.send-button');
+                    inputs.forEach(input => {
+                        input.disabled = !hasResponse;
+                    });
+                    
+                    if (hasResponse && !panel.dataset.hasProcessedMessage) {
+                        // Auto-populate the next panel's input with context
+                        const textarea = panel.querySelector('.prompt-input');
+                        if (!textarea.value) {
+                            textarea.value = `Continue the conversation based on the previous response: "${lastMessage.textContent}"`;
+                        }
+                        panel.dataset.hasProcessedMessage = 'true';
+                        
+                        // Update panel status
+                        const header = panel.querySelector('.panel-header h5');
+                        header.textContent = `Assistant ${index + 1} (Ready to Continue)`;
+                        panel.dataset.ready = 'true';
+                        panel.dataset.waiting = 'false';
+                    }
+                });
+                
+                // Observe the previous panel's chat window
+                const prevPanelChat = panels[index - 1].querySelector('.chat-window');
+                observer.observe(prevPanelChat, { childList: true, subtree: true });
+                panel._observer = observer;
+            });
+        }
+
+        // Add model configuration options
+        function createModelConfigPanel(panel) {
+            const configPanel = document.createElement('div');
+            configPanel.className = 'model-config mb-2 d-none';
+            configPanel.innerHTML = `
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showReasoning-${panel.id}">
+                            <label class="form-check-label" for="showReasoning-${panel.id}">Show Reasoning</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <select class="context-length cyber-pill">
+                            <option value="2048">2K Context</option>
+                            <option value="4096">4K Context</option>
+                            <option value="8192" selected>8K Context</option>
+                            <option value="16384">16K Context</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <div class="temperature-control">
+                            <label>Temperature: <span class="temp-value">0.7</span></label>
+                            <input type="range" class="form-range" min="0" max="2" step="0.1" value="0.7">
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            return configPanel;
+        }
+
+        // Handle model change to show appropriate config options
+        function handleModelChange(select) {
+            event.stopPropagation();  // Prevent toggle when selecting model
+            const panel = select.closest('.chat-panel');
+            const modelConfig = panel.querySelector('.model-config');
+            const toggleIcon = modelConfig.querySelector('.toggle-icon');
+            
+            if (select.value) {
+                modelConfig.classList.add('expanded');
+                toggleIcon.textContent = '▲';
+            }
+        }
+
+        // Add drag and drop functionality
+        function setupDragAndDrop() {
+            document.querySelectorAll('.chat-window').forEach(chatWindow => {
+                chatWindow.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    const draggedOver = e.target.closest('.message-block');
+                    if (draggedOver) {
+                        draggedOver.classList.add('drag-over');
+                    }
+                });
+
+                chatWindow.addEventListener('dragleave', e => {
+                    e.preventDefault();
+                    const draggedOver = e.target.closest('.message-block');
+                    if (draggedOver) {
+                        draggedOver.classList.remove('drag-over');
+                    }
+                });
+
+                chatWindow.addEventListener('drop', e => {
+                    e.preventDefault();
+                    const draggedElement = document.querySelector('.dragging');
+                    if (draggedElement) {
+                        const clone = draggedElement.cloneNode(true);
+                        chatWindow.appendChild(clone);
+                        setupDragListeners(clone);
+                    }
+                    document.querySelectorAll('.drag-over').forEach(el => 
+                        el.classList.remove('drag-over'));
+                });
+            });
+        }
+
+        function openSettings() {
+            const settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            settingsModal.show();
+        }
+
+        // Add this to ensure Bootstrap is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Bootstrap modal
+            const settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            
+            // Add click handler for settings button
+            document.getElementById('settingsButton').addEventListener('click', () => {
+                settingsModal.show();
+            });
+        });
+
+        // Add this function to handle model config toggling
+        function toggleConfig(configElement) {
+            // Stop event propagation
+            event.stopPropagation();
+            
+            // Toggle expanded class
+            configElement.classList.toggle('expanded');
+            
+            // Update toggle icon
+            const toggleIcon = configElement.querySelector('.toggle-icon');
+            if (configElement.classList.contains('expanded')) {
+                toggleIcon.textContent = '▲';
+            } else {
+                toggleIcon.textContent = '▼';
+            }
+        }
+
+        // Add this function to set up drag and drop for messages
+        function setupMessageDragAndDrop() {
+            // Make messages draggable
+            document.querySelectorAll('.message').forEach(message => {
+                message.setAttribute('draggable', 'true');
+                
+                message.addEventListener('dragstart', (e) => {
+                    message.classList.add('dragging');
+                    e.dataTransfer.setData('text/plain', message.textContent);
+                    e.dataTransfer.setData('messageType', message.classList.contains('user-message') ? 'user' : 'assistant');
+                });
+
+                message.addEventListener('dragend', () => {
+                    message.classList.remove('dragging');
+                    document.querySelectorAll('.chat-window').forEach(window => {
+                        window.classList.remove('drag-over');
+                    });
+                });
+            });
+
+            // Set up chat windows as drop targets
+            document.querySelectorAll('.chat-window').forEach(chatWindow => {
+                chatWindow.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    chatWindow.classList.add('drag-over');
+                });
+
+                chatWindow.addEventListener('dragleave', (e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                        chatWindow.classList.remove('drag-over');
+                    }
+                });
+
+                chatWindow.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    chatWindow.classList.remove('drag-over');
+
+                    const messageContent = e.dataTransfer.getData('text/plain');
+                    const messageType = e.dataTransfer.getData('messageType');
+
+                    // Create new message element
+                    const newMessage = document.createElement('div');
+                    newMessage.className = `message ${messageType}-message`;
+                    newMessage.textContent = messageContent;
+
+                    // Add to chat window
+                    chatWindow.appendChild(newMessage);
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+
+                    // Set up drag for new message
+                    setupMessageDragAndDrop();
+                });
+            });
+        }
+    </script>
+</body>
+</html>
