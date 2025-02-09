@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme } from '@mantine/core'
+import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select } from '@mantine/core'
 import { IconSettings, IconPlus } from '@tabler/icons-react'
 import ChatPanel from './components/ChatPanel'
 import SettingsPanel from './components/SettingsPanel'
@@ -13,6 +13,8 @@ const theme = createTheme({
   primaryColor: 'green',
 });
 
+type ChatMode = 'individual' | 'sequential' | 'parallel';
+
 interface ChatPanelConfig {
   id: string;
   title: string;
@@ -25,6 +27,7 @@ function App() {
   const [chatPanels, setChatPanels] = useState<ChatPanelConfig[]>([
     { id: '1', title: 'Panel 1' }
   ]);
+  const [chatMode, setChatMode] = useState<ChatMode>('individual');
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
@@ -45,6 +48,34 @@ function App() {
     const panelCount = chatPanels.length;
     if (panelCount <= 3) return 'calc(100vh - 120px)';  // Full height for 1-3 panels
     return 'calc(50vh - 60px)';                         // Half height for 4-6 panels
+  };
+
+  const handleModeChange = (value: string | null) => {
+    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel')) {
+      setChatMode(value);
+    }
+  };
+
+  const handleSequentialMessage = (panelIndex: number, message: string) => {
+    if (chatMode === 'sequential' && panelIndex < chatPanels.length - 1) {
+      // Find the next panel's ChatPanel component
+      const nextPanel = document.querySelector(
+        `[data-panel-index="${panelIndex + 1}"]`
+      );
+      
+      if (nextPanel) {
+        // Get the MessageInput component's onSend function
+        const messageInput = nextPanel.querySelector('.message-input');
+        if (messageInput) {
+          // Directly call the handleSendMessage function on the ChatPanel
+          const event = new CustomEvent('sequential-message', { 
+            detail: { message },
+            bubbles: true 
+          });
+          messageInput.dispatchEvent(event);
+        }
+      }
+    }
   };
 
   return (
@@ -79,6 +110,20 @@ function App() {
                 >
                   Add Panel {chatPanels.length}/{MAX_PANELS}
                 </Button>
+                <Select
+                  value={chatMode}
+                  onChange={handleModeChange}
+                  data={[
+                    { value: 'individual', label: 'Individual Mode' },
+                    { value: 'sequential', label: 'Sequential Mode' },
+                    { value: 'parallel', label: 'Parallel Mode' }
+                  ]}
+                  style={{ 
+                    width: '180px',
+                    marginLeft: '1rem'
+                  }}
+                  placeholder="Select Mode"
+                />
               </Box>
               <ActionIcon 
                 variant="light" 
@@ -140,18 +185,27 @@ function App() {
                   }} 
                   spacing="lg"
                 >
-                  {chatPanels.map(panel => (
+                  {chatPanels.map((panel, index) => (
                     <Box 
                       key={panel.id} 
                       style={{ 
                         height: getPanelHeight(),
                         transition: 'height 0.3s ease-in-out'
                       }}
+                      data-panel-index={index}
                     >
                       <ChatPanel
                         title={panel.title}
-                        isAutonomous={false}
+                        isAutonomous={chatMode !== 'individual'}
+                        mode={chatMode}
                         onRemove={() => removeChatPanel(panel.id)}
+                        panelIndex={index}
+                        totalPanels={chatPanels.length}
+                        onSequentialMessage={
+                          chatMode === 'sequential' 
+                            ? (message) => handleSequentialMessage(index, message)
+                            : undefined
+                        }
                       />
                     </Box>
                   ))}

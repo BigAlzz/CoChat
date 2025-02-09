@@ -27,10 +27,22 @@ interface LMStudioMessage {
 interface ChatPanelProps {
   title: string;
   isAutonomous: boolean;
+  mode: 'individual' | 'sequential' | 'parallel';
   onRemove?: () => void;
+  panelIndex?: number;
+  totalPanels?: number;
+  onSequentialMessage?: (message: string) => void;
 }
 
-const ChatPanel = ({ title, isAutonomous, onRemove }: ChatPanelProps) => {
+const ChatPanel = ({ 
+  title, 
+  isAutonomous, 
+  mode, 
+  onRemove,
+  panelIndex = 0,
+  totalPanels = 1,
+  onSequentialMessage 
+}: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -48,13 +60,30 @@ const ChatPanel = ({ title, isAutonomous, onRemove }: ChatPanelProps) => {
     };
 
     initializeConversation();
-  }, [title, isAutonomous]);
+
+    // Add event listener for sequential messages
+    const handleSequentialEvent = (event: CustomEvent) => {
+      if (event.detail && event.detail.message && selectedModel) {
+        handleSendMessage(event.detail.message);
+      }
+    };
+
+    const panel = document.querySelector(`[data-panel-index="${panelIndex}"]`);
+    if (panel) {
+      panel.addEventListener('sequential-message', handleSequentialEvent as EventListener);
+    }
+
+    return () => {
+      if (panel) {
+        panel.removeEventListener('sequential-message', handleSequentialEvent as EventListener);
+      }
+    };
+  }, [title, isAutonomous, selectedModel, panelIndex]);
 
   const handleModelSelect = async (modelId: string) => {
     setSelectedModel(modelId);
     
     try {
-      // Create a conversation and add the assistant in one step
       const conversation = await api.createConversation(title, isAutonomous);
       setConversationId(conversation.id);
       
@@ -62,8 +91,8 @@ const ChatPanel = ({ title, isAutonomous, onRemove }: ChatPanelProps) => {
         name: "Assistant",
         model: modelId,
         role: "assistant",
-        posture: "helpful",
-        system_prompt: "You are a helpful AI assistant."
+        posture: mode === 'individual' ? "helpful" : mode === 'sequential' ? "sequential" : "parallel",
+        system_prompt: `You are a helpful AI assistant operating in ${mode} mode.`
       });
     } catch (error) {
       console.error('Error setting model:', error);
@@ -109,6 +138,12 @@ const ChatPanel = ({ title, isAutonomous, onRemove }: ChatPanelProps) => {
       }
 
       setMessages(prev => [...prev, ...newMessages]);
+
+      // If in sequential mode and not the last panel, pass the response to the next panel
+      if (mode === 'sequential' && panelIndex < totalPanels - 1 && onSequentialMessage) {
+        const lastResponse = newMessages[newMessages.length - 1];
+        onSequentialMessage(lastResponse.content);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
@@ -137,7 +172,12 @@ const ChatPanel = ({ title, isAutonomous, onRemove }: ChatPanelProps) => {
           alignItems: 'center',
           flexShrink: 0
         }}>
-          <Title order={3}>{title}</Title>
+          <Title order={3}>
+            {title}
+            <Text size="xs" c="dimmed" style={{ marginLeft: '0.5rem' }}>
+              ({mode} mode)
+            </Text>
+          </Title>
           <Group gap="xs">
             <Button 
               variant="light"
