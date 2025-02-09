@@ -43,9 +43,8 @@ function App() {
   // Calculate panel height based on number of panels
   const getPanelHeight = () => {
     const panelCount = chatPanels.length;
-    if (panelCount <= 2) return 'calc(100vh - 120px)';  // Full height minus header and padding
-    if (panelCount <= 4) return 'calc(50vh - 60px)';    // Half height for 3-4 panels
-    return 'calc(50vh - 60px)';                         // Keep same height for 5-6 panels
+    if (panelCount <= 3) return 'calc(100vh - 120px)';  // Full height for 1-3 panels
+    return 'calc(50vh - 60px)';                         // Half height for 4-6 panels
   };
 
   return (
