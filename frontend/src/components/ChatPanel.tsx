@@ -53,18 +53,31 @@ const ChatPanel = ({
   const [selectedModel, setSelectedModel] = useState<string>();
   const [error, setError] = useState<string | null>(null);
 
+  // Reset conversation when mode changes
   useEffect(() => {
     const initializeConversation = async () => {
       try {
         const conversation = await api.createConversation(title, isAutonomous);
         setConversationId(conversation.id);
+        
+        // If we have a selected model, re-add the assistant with new mode settings
+        if (selectedModel) {
+          await api.addAssistant(conversation.id, {
+            name: "Assistant",
+            model: selectedModel,
+            role: "assistant",
+            posture: mode === 'individual' ? "helpful" : mode === 'sequential' ? "sequential" : "parallel",
+            system_prompt: `You are a helpful AI assistant operating in ${mode} mode.`
+          });
+        }
       } catch (error) {
         console.error('Error creating conversation:', error);
+        setError('Failed to initialize conversation');
       }
     };
 
     initializeConversation();
-  }, [title, isAutonomous]);
+  }, [title, isAutonomous, mode]); // Add mode as a dependency
 
   // Separate useEffect for message handling
   useEffect(() => {
@@ -92,10 +105,11 @@ const ChatPanel = ({
         panel.removeEventListener('parallel-message', handleParallelEvent as EventListener);
       }
     };
-  }, [selectedModel, panelIndex, totalPanels, mode]);
+  }, [selectedModel, panelIndex, totalPanels, mode]); // Add mode as a dependency
 
   const handleModelSelect = async (modelId: string) => {
     setSelectedModel(modelId);
+    setError(null);
     
     try {
       const conversation = await api.createConversation(title, isAutonomous);
@@ -116,7 +130,10 @@ const ChatPanel = ({
   };
 
   const handleSendMessage = async (content: string, isParallelResponse: boolean = false) => {
-    if (!selectedModel) return;
+    if (!selectedModel) {
+      setError('Please select a model first');
+      return;
+    }
 
     // Only add user message for the originating panel in parallel mode
     if (!isParallelResponse) {
@@ -188,6 +205,24 @@ const ChatPanel = ({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden'
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.currentTarget.style.boxShadow = '0 0 10px #39ff14';
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(e) => {
+        e.currentTarget.style.boxShadow = '';
+      }}
+      onDrop={async (e) => {
+        e.preventDefault();
+        e.currentTarget.style.boxShadow = '';
+        const content = e.dataTransfer.getData('text/plain');
+        if (content && selectedModel) {
+          handleSendMessage(content);
+        } else if (!selectedModel) {
+          setError('Please select a model before dropping a message');
+        }
       }}
     >
       <Stack h="100%" gap="xs" style={{ flex: 1 }}>

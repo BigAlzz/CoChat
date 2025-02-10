@@ -36,11 +36,28 @@ html, body, #root {
   @apply border border-border rounded-lg;
   background-color: var(--mantine-color-dark-6) !important;
   box-shadow: 0 0 10px rgba(57, 255, 20, 0.1);
+  transition: box-shadow 0.3s ease-in-out;
+}
+
+.chat-panel.drag-over {
+  box-shadow: 0 0 20px rgba(57, 255, 20, 0.3) !important;
 }
 
 .message {
   @apply p-4 my-2 rounded;
   border: 1px solid var(--mantine-color-dark-5);
+  transition: all 0.2s ease-in-out;
+}
+
+.message:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(57, 255, 20, 0.1);
+}
+
+.message:active {
+  cursor: grabbing;
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(57, 255, 20, 0.1);
 }
 
 .message.user {

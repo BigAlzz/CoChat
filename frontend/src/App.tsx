@@ -55,10 +55,32 @@ function App() {
 
   const handleModeChange = (value: string | null) => {
     if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'iteration')) {
-      setChatMode(value);
-      // Reset iteration state when changing modes
+      // Clear any existing state from previous mode
       setCurrentCycle(0);
       setCurrentIterationPanel(0);
+      
+      // Update the mode
+      setChatMode(value);
+      
+      // Show a notification about mode change
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.bottom = '20px';
+      notification.style.right = '20px';
+      notification.style.backgroundColor = '#39ff14';
+      notification.style.color = 'black';
+      notification.style.padding = '10px 20px';
+      notification.style.borderRadius = '5px';
+      notification.style.zIndex = '1000';
+      notification.style.boxShadow = '0 0 10px rgba(57, 255, 20, 0.3)';
+      notification.textContent = `Switched to ${value} mode`;
+      
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.5s ease-out';
+        setTimeout(() => document.body.removeChild(notification), 500);
+      }, 2000);
     }
   };
 

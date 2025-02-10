@@ -14,10 +14,13 @@ class LMStudioService:
     async def get_available_models(self, force_refresh: bool = False) -> List[Dict]:
         """Fetch available models from LM Studio."""
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:  # 120 second timeout
+            async with httpx.AsyncClient(timeout=120.0) as client:  # Increased timeout to 120 seconds
                 response = await client.get(f"{self.base_url}/v1/models")
                 response.raise_for_status()
-                return response.json().get('data', [])  # Extract just the data array
+                data = response.json()
+                if isinstance(data, dict) and "data" in data:
+                    return data["data"]
+                return data  # If it's already a list
         except Exception as e:
             print(f"Warning: Could not connect to LM Studio: {e}")
             return []
@@ -139,16 +142,22 @@ class LMStudioService:
         responses = await asyncio.gather(*tasks)
         return base_messages + list(responses)
 
-    async def add_model(self, model: Dict) -> None:
+    async def add_model(self, model: dict) -> None:
         """Add a new model to LM Studio."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.base_url}/v1/models",
-                    json=model,
+                    json={
+                        "id": model["id"],
+                        "name": model["name"],
+                        "object": model.get("object", "model"),
+                        "owned_by": model.get("owned_by", "organization_owner")
+                    },
                     headers={"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
                 )
                 response.raise_for_status()
+                return response.json()
         except Exception as e:
             print(f"Error adding model: {e}")
             raise

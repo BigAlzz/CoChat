@@ -13,7 +13,7 @@ router = APIRouter()
 async def get_available_models():
     """Get list of available models from LM Studio."""
     models = await lmstudio_service.get_available_models()
-    return models  # Now returns just the array of models
+    return {"data": models}  # Wrap in data field to match LMStudioResponse format
 
 @router.post("/conversations", response_model=schemas.Conversation)
 async def create_conversation(
@@ -175,7 +175,12 @@ Summary:"""
 async def add_model(model: schemas.Model):
     """Add a new model to LM Studio."""
     try:
-        await lmstudio_service.add_model(model.dict())
+        await lmstudio_service.add_model({
+            "id": model.id,
+            "name": model.name,
+            "object": "model",
+            "owned_by": "organization_owner"
+        })
         return {"message": "Model added successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -186,5 +191,22 @@ async def remove_model(model_id: str):
     try:
         await lmstudio_service.remove_model(model_id)
         return {"message": "Model removed successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/models/{model_id}")
+async def update_model(model_id: str, model: schemas.Model):
+    """Update a model in LM Studio."""
+    try:
+        # First remove the old model
+        await lmstudio_service.remove_model(model_id)
+        # Then add the updated model
+        await lmstudio_service.add_model({
+            "id": model.id,
+            "name": model.name,
+            "object": "model",
+            "owned_by": "organization_owner"
+        })
+        return {"message": "Model updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 

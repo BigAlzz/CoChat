@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .core.config import settings
-from .api.endpoints import conversation
-from .core.database import engine, Base
-from .models import models
-from .core.init_db import init_db
+from app.core.config import settings
+from app.api.endpoints import conversation
+from app.core.database import engine, Base
+from app.models import models
+from app.core.init_db import init_db
 
 # Create all database tables
 Base.metadata.create_all(bind=engine)

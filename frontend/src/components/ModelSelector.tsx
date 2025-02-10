@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Select, Button, Group, Text, Tooltip, Badge, Alert } from '@mantine/core';
-import { IconRefresh, IconInfoCircle, IconAlertCircle } from '@tabler/icons-react';
+import { IconRefresh, IconAlertCircle } from '@tabler/icons-react';
 import * as api from '../services/api';
 
 interface Model {
@@ -43,7 +43,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
       if (modelList && modelList.length > 0) {
         const formattedModels = modelList.map((model) => ({
           id: model.id,
-          name: formatModelName(model.id),
+          name: model.name || model.id,
           object: model.object,
           owned_by: model.owned_by
         }));
@@ -97,7 +97,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                   .filter(model => model.owned_by === 'organization_owner')
                   .map(model => ({
                     value: model.id,
-                    label: model.name || formatModelName(model.id)
+                    label: model.name
                   }))
               },
               {
@@ -106,7 +106,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                   .filter(model => model.owned_by !== 'organization_owner')
                   .map(model => ({
                     value: model.id,
-                    label: model.name || formatModelName(model.id)
+                    label: model.name
                   }))
               }
             ].filter(group => group.items.length > 0) : []}
@@ -121,13 +121,37 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
             <Alert 
               icon={<IconAlertCircle size={16} />} 
               color="red" 
-              title="Connection Error" 
+              title={
+                <Group gap="xs" align="center">
+                  <div
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: '#ff3333',
+                      boxShadow: '0 0 5px #ff3333'
+                    }}
+                  />
+                  <Text>Connection Error</Text>
+                </Group>
+              }
               mt="xs"
+              styles={{
+                root: {
+                  backgroundColor: 'rgba(255, 51, 51, 0.1)',
+                  borderColor: 'rgba(255, 51, 51, 0.2)'
+                }
+              }}
             >
               <Text size="sm">
                 {error}
                 {error.includes('Please ensure:') && (
-                  <ul style={{ marginTop: '0.5rem', marginBottom: 0, paddingLeft: '1rem' }}>
+                  <ul style={{ 
+                    marginTop: '0.5rem', 
+                    marginBottom: 0, 
+                    paddingLeft: '1rem',
+                    color: 'rgba(255, 255, 255, 0.8)'
+                  }}>
                     <li>LM Studio is running on your machine</li>
                     <li>The backend server is running (cd app && python -m uvicorn main:app --reload)</li>
                     <li>The API server is accessible at http://192.168.50.89:1234</li>
@@ -152,9 +176,19 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
       </Group>
       {selectedModel && models.length > 0 && (
         <Group gap="xs" mt="xs">
-          <Tooltip label="Model information">
-            <IconInfoCircle size={16} style={{ color: '#39ff14' }} />
-          </Tooltip>
+          <div
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' 
+                ? '#39ff14'  // Green for local models
+                : '#ffd700',  // Gold for remote models
+              boxShadow: `0 0 5px ${models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' 
+                ? '#39ff14'  // Green glow for local
+                : '#ffd700'}` // Gold glow for remote
+            }}
+          />
           <Text size="sm" c="dimmed">
             {models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' ? 'Local Model' : 'Remote Model'}
           </Text>

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://192.168.50.89:1234/v1';
+const LMSTUDIO_API_URL = 'http://192.168.50.89:1234/v1';
 
 export interface Assistant {
   name: string;
@@ -17,7 +17,7 @@ export interface Message {
   role: 'user' | 'assistant';
   assistant_id?: number;
   created_at: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LMStudioResponse {
@@ -25,6 +25,7 @@ export interface LMStudioResponse {
     id: string;
     object: string;
     owned_by: string;
+    name?: string;
   }>;
   object: string;
 }
@@ -36,13 +37,14 @@ export interface Model {
   owned_by?: string;
 }
 
+// Create API instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: LMSTUDIO_API_URL,
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
-  withCredentials: false // Disable credentials for CORS
+  withCredentials: false
 });
 
 // Add response interceptor for better error handling
@@ -51,10 +53,10 @@ api.interceptors.response.use(
   error => {
     console.error('API Error:', error);
     if (error.code === 'ECONNABORTED') {
-      throw new Error('Connection timeout. Please check if LM Studio is running and accessible at http://192.168.50.89:1234');
+      throw new Error('Connection timeout. Please check if LM Studio is accessible.');
     }
     if (!error.response) {
-      throw new Error('Network error. Please ensure LM Studio is running and accessible at http://192.168.50.89:1234');
+      throw new Error('Network error. Please ensure LM Studio is running and accessible.');
     }
     if (error.response.status === 404) {
       throw new Error('API endpoint not found. Please check if LM Studio is running correctly.');
@@ -63,19 +65,16 @@ api.interceptors.response.use(
   }
 );
 
+// Model management endpoints
 export const getAvailableModels = async (): Promise<LMStudioResponse['data']> => {
   try {
     const response = await api.get<LMStudioResponse>('/models');
     console.log('Models response:', response.data);
     
-    if (response.data) {
-      if (Array.isArray(response.data)) {
-        return response.data;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        return response.data.data;
-      }
+    if (response.data && response.data.data) {
+      return response.data.data;
     }
-    throw new Error('Invalid response format from LM Studio. Please ensure the server is running correctly.');
+    throw new Error('Invalid response format from LM Studio');
   } catch (error) {
     console.error('Error fetching models:', error);
     if (error instanceof Error) {
@@ -85,35 +84,48 @@ export const getAvailableModels = async (): Promise<LMStudioResponse['data']> =>
   }
 };
 
-export const createConversation = async (title: string, isAutonomous: boolean) => {
-  // For LM Studio, we'll just return a mock conversation object
-  return {
-    id: Date.now(),
-    title,
-    is_autonomous: isAutonomous
-  };
+export const addModel = async (model: Model) => {
+  const response = await api.post('/models', {
+    id: model.id,
+    name: model.name,
+    object: 'model',
+    owned_by: 'organization_owner'
+  });
+  return response.data;
 };
 
-export const addAssistant = async (
-  conversationId: number,
-  assistant: Assistant
-) => {
-  // Store the selected model ID
-  return {
-    id: conversationId,
-    ...assistant
-  };
+export const removeModel = async (modelId: string) => {
+  const response = await api.delete(`/models/${modelId}`);
+  return response.data;
 };
 
+export const updateModel = async (model: { id: string; name: string; oldId: string }) => {
+  try {
+    // First remove the old model
+    await removeModel(model.oldId);
+    // Then add the updated model
+    return await addModel({
+      id: model.id,
+      name: model.name,
+      object: 'model',
+      owned_by: 'organization_owner'
+    });
+  } catch (error) {
+    console.error('Error updating model:', error);
+    throw error;
+  }
+};
+
+// Chat completion endpoint
 export const sendMessage = async (
-  modelId: string, // Changed from conversationId to modelId
+  modelId: string,
   content: string
 ) => {
   const response = await api.post(
     '/chat/completions',
     { 
       messages: [{ role: 'user', content }],
-      model: modelId, // Use the actual model ID here
+      model: modelId,
       temperature: 0.7,
       max_tokens: 1000,
       stream: false
@@ -136,17 +148,24 @@ export const sendMessage = async (
   }];
 };
 
-// Remove unused endpoints since we're communicating directly with LM Studio
-export const getConversationMessages = async () => [];
-export const getConversationSummary = async () => '';
-
-// Update model management to use LM Studio endpoints
-export const addModel = async (model: Model) => {
-  const response = await api.post('/models', model);
-  return response.data;
+// Mock endpoints for conversation management
+export const createConversation = async (title: string, isAutonomous: boolean) => {
+  return {
+    id: Date.now(),
+    title,
+    is_autonomous: isAutonomous
+  };
 };
 
-export const removeModel = async (modelId: string) => {
-  const response = await api.delete(`/models/${modelId}`);
-  return response.data;
-}; 
+export const addAssistant = async (
+  conversationId: number,
+  assistant: Assistant
+) => {
+  return {
+    id: conversationId,
+    ...assistant
+  };
+};
+
+export const getConversationMessages = async () => [];
+export const getConversationSummary = async () => ''; 
