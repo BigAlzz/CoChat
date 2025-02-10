@@ -13,7 +13,7 @@ const theme = createTheme({
   primaryColor: 'green',
 });
 
-type ChatMode = 'individual' | 'sequential' | 'parallel';
+type ChatMode = 'individual' | 'sequential' | 'parallel' | 'iteration';
 
 interface ChatPanelConfig {
   id: string;
@@ -28,6 +28,9 @@ function App() {
     { id: '1', title: 'Panel 1' }
   ]);
   const [chatMode, setChatMode] = useState<ChatMode>('individual');
+  const [iterationCycles, setIterationCycles] = useState(1);
+  const [currentCycle, setCurrentCycle] = useState(0);
+  const [currentIterationPanel, setCurrentIterationPanel] = useState(0);
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
@@ -51,30 +54,94 @@ function App() {
   };
 
   const handleModeChange = (value: string | null) => {
-    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel')) {
+    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'iteration')) {
       setChatMode(value);
+      // Reset iteration state when changing modes
+      setCurrentCycle(0);
+      setCurrentIterationPanel(0);
     }
   };
 
   const handleSequentialMessage = (panelIndex: number, message: string) => {
     if (chatMode === 'sequential' && panelIndex < chatPanels.length - 1) {
-      // Find the next panel's ChatPanel component
+      // Handle sequential mode
+      const nextPanelIndex = panelIndex + 1;
       const nextPanel = document.querySelector(
-        `[data-panel-index="${panelIndex + 1}"]`
+        `[data-panel-index="${nextPanelIndex}"]`
       );
       
       if (nextPanel) {
-        // Get the MessageInput component's onSend function
         const messageInput = nextPanel.querySelector('.message-input');
-        if (messageInput) {
-          // Directly call the handleSendMessage function on the ChatPanel
+        const modelSelected = nextPanel.querySelector('.model-selector input')?.getAttribute('value');
+        
+        if (messageInput && modelSelected) {
           const event = new CustomEvent('sequential-message', { 
             detail: { message },
             bubbles: true 
           });
           messageInput.dispatchEvent(event);
+        } else {
+          setTimeout(() => handleSequentialMessage(panelIndex, message), 500);
         }
       }
+    } else if (chatMode === 'iteration') {
+      // Handle iteration mode
+      const nextPanelIndex = (panelIndex + 1) % chatPanels.length;
+      
+      // If we've completed a cycle and there are more cycles to go
+      if (nextPanelIndex === 0 && currentCycle + 1 < iterationCycles) {
+        setCurrentCycle(prev => prev + 1);
+      }
+      
+      // Continue to next panel if we haven't completed all cycles
+      if (!(nextPanelIndex === 0 && currentCycle + 1 >= iterationCycles)) {
+        const nextPanel = document.querySelector(
+          `[data-panel-index="${nextPanelIndex}"]`
+        );
+        
+        if (nextPanel) {
+          const messageInput = nextPanel.querySelector('.message-input');
+          const modelSelected = nextPanel.querySelector('.model-selector input')?.getAttribute('value');
+          
+          if (messageInput && modelSelected) {
+            const event = new CustomEvent('sequential-message', { 
+              detail: { message },
+              bubbles: true 
+            });
+            messageInput.dispatchEvent(event);
+          } else {
+            setTimeout(() => handleSequentialMessage(panelIndex, message), 500);
+          }
+        }
+      }
+      
+      setCurrentIterationPanel(nextPanelIndex);
+    }
+  };
+
+  const handleParallelMessage = (sourceIndex: number, message: string) => {
+    if (chatMode === 'parallel') {
+      // Send the message to all other panels
+      chatPanels.forEach((_, index) => {
+        if (index !== sourceIndex) {  // Don't send back to source panel
+          const panel = document.querySelector(
+            `[data-panel-index="${index}"]`
+          );
+          
+          if (panel) {
+            const messageInput = panel.querySelector('.message-input');
+            const modelSelected = panel.querySelector('.model-selector input')?.getAttribute('value');
+            
+            if (messageInput && modelSelected) {
+              const event = new CustomEvent('parallel-message', { 
+                detail: { message },
+                bubbles: true 
+              });
+              messageInput.dispatchEvent(event);
+            }
+          }
+        }
+      });
     }
   };
 
@@ -116,7 +183,8 @@ function App() {
                   data={[
                     { value: 'individual', label: 'Individual Mode' },
                     { value: 'sequential', label: 'Sequential Mode' },
-                    { value: 'parallel', label: 'Parallel Mode' }
+                    { value: 'parallel', label: 'Parallel Mode' },
+                    { value: 'iteration', label: 'Iteration Mode' }
                   ]}
                   style={{ 
                     width: '180px',
@@ -124,6 +192,25 @@ function App() {
                   }}
                   placeholder="Select Mode"
                 />
+                {chatMode === 'iteration' && (
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={iterationCycles}
+                    onChange={(e) => setIterationCycles(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                    style={{
+                      width: '60px',
+                      marginLeft: '0.5rem',
+                      padding: '0.25rem',
+                      backgroundColor: '#25262b',
+                      border: '1px solid #2c2e33',
+                      color: '#e0e0e0',
+                      borderRadius: '4px'
+                    }}
+                    placeholder="Cycles"
+                  />
+                )}
               </Box>
               <ActionIcon 
                 variant="light" 
@@ -202,10 +289,16 @@ function App() {
                         panelIndex={index}
                         totalPanels={chatPanels.length}
                         onSequentialMessage={
-                          chatMode === 'sequential' 
+                          (chatMode === 'sequential' || chatMode === 'iteration')
                             ? (message) => handleSequentialMessage(index, message)
                             : undefined
                         }
+                        onParallelMessage={
+                          chatMode === 'parallel'
+                            ? (message) => handleParallelMessage(index, message)
+                            : undefined
+                        }
+                        currentCycle={chatMode === 'iteration' ? currentCycle : undefined}
                       />
                     </Box>
                   ))}

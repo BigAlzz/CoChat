@@ -27,11 +27,13 @@ interface LMStudioMessage {
 interface ChatPanelProps {
   title: string;
   isAutonomous: boolean;
-  mode: 'individual' | 'sequential' | 'parallel';
+  mode: 'individual' | 'sequential' | 'parallel' | 'iteration';
   onRemove?: () => void;
   panelIndex?: number;
   totalPanels?: number;
   onSequentialMessage?: (message: string) => void;
+  onParallelMessage?: (message: string) => void;
+  currentCycle?: number;
 }
 
 const ChatPanel = ({ 
@@ -41,7 +43,9 @@ const ChatPanel = ({
   onRemove,
   panelIndex = 0,
   totalPanels = 1,
-  onSequentialMessage 
+  onSequentialMessage,
+  onParallelMessage,
+  currentCycle = 0
 }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,25 +64,35 @@ const ChatPanel = ({
     };
 
     initializeConversation();
+  }, [title, isAutonomous]);
 
-    // Add event listener for sequential messages
+  // Separate useEffect for message handling
+  useEffect(() => {
     const handleSequentialEvent = (event: CustomEvent) => {
       if (event.detail && event.detail.message && selectedModel) {
         handleSendMessage(event.detail.message);
       }
     };
 
+    const handleParallelEvent = (event: CustomEvent) => {
+      if (event.detail && event.detail.message && selectedModel) {
+        handleSendMessage(event.detail.message, true);  // true indicates it's a parallel message
+      }
+    };
+
     const panel = document.querySelector(`[data-panel-index="${panelIndex}"]`);
     if (panel) {
       panel.addEventListener('sequential-message', handleSequentialEvent as EventListener);
+      panel.addEventListener('parallel-message', handleParallelEvent as EventListener);
     }
 
     return () => {
       if (panel) {
         panel.removeEventListener('sequential-message', handleSequentialEvent as EventListener);
+        panel.removeEventListener('parallel-message', handleParallelEvent as EventListener);
       }
     };
-  }, [title, isAutonomous, selectedModel, panelIndex]);
+  }, [selectedModel, panelIndex, totalPanels, mode]);
 
   const handleModelSelect = async (modelId: string) => {
     setSelectedModel(modelId);
@@ -101,15 +115,19 @@ const ChatPanel = ({
     }
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, isParallelResponse: boolean = false) => {
     if (!selectedModel) return;
 
-    const userMessage: ChatMessage = {
-      id: Date.now(),
-      content,
-      role: 'user'
-    };
-    setMessages(prev => [...prev, userMessage]);
+    // Only add user message for the originating panel in parallel mode
+    if (!isParallelResponse) {
+      const userMessage: ChatMessage = {
+        id: Date.now(),
+        content,
+        role: 'user'
+      };
+      setMessages(prev => [...prev, userMessage]);
+    }
+    
     setIsLoading(true);
     setError(null);
 
@@ -139,10 +157,17 @@ const ChatPanel = ({
 
       setMessages(prev => [...prev, ...newMessages]);
 
-      // If in sequential mode and not the last panel, pass the response to the next panel
-      if (mode === 'sequential' && panelIndex < totalPanels - 1 && onSequentialMessage) {
+      // Handle sequential and iteration modes
+      if ((mode === 'sequential' || mode === 'iteration') && onSequentialMessage) {
         const lastResponse = newMessages[newMessages.length - 1];
-        onSequentialMessage(lastResponse.content);
+        setTimeout(() => {
+          onSequentialMessage(lastResponse.content);
+        }, 100);
+      }
+      
+      // Handle parallel mode - only for the originating message
+      if (mode === 'parallel' && !isParallelResponse && onParallelMessage) {
+        onParallelMessage(content);
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -175,7 +200,7 @@ const ChatPanel = ({
           <Title order={3}>
             {title}
             <Text size="xs" c="dimmed" style={{ marginLeft: '0.5rem' }}>
-              ({mode} mode)
+              ({mode} mode{mode === 'iteration' && panelIndex === 0 ? ` - Cycle ${currentCycle + 1}` : ''})
             </Text>
           </Title>
           <Group gap="xs">
