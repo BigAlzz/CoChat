@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getSystemPrompt } from '../config/assistantConfig';
 
 const LMSTUDIO_API_URL = 'http://192.168.50.89:1234/v1';
 
@@ -40,7 +41,7 @@ export interface Model {
 // Create API instance
 const api = axios.create({
   baseURL: LMSTUDIO_API_URL,
-  timeout: 120000,
+  timeout: 300000, // 300 seconds timeout
   headers: {
     'Content-Type': 'application/json',
   },
@@ -53,10 +54,10 @@ api.interceptors.response.use(
   error => {
     console.error('API Error:', error);
     if (error.code === 'ECONNABORTED') {
-      throw new Error('Connection timeout. Please check if LM Studio is accessible.');
+      throw new Error('The model is taking longer than expected to respond. Still waiting for response...');
     }
     if (!error.response) {
-      throw new Error('Network error. Please ensure LM Studio is running and accessible.');
+      throw new Error('Cannot connect to LM Studio. Please check if it is running and accessible.');
     }
     if (error.response.status === 404) {
       throw new Error('API endpoint not found. Please check if LM Studio is running correctly.');
@@ -119,12 +120,19 @@ export const updateModel = async (model: { id: string; name: string; oldId: stri
 // Chat completion endpoint
 export const sendMessage = async (
   modelId: string,
-  content: string
+  content: string,
+  role: string,
+  posture: string
 ) => {
+  const systemPrompt = getSystemPrompt(role, posture);
+  
   const response = await api.post(
     '/chat/completions',
     { 
-      messages: [{ role: 'user', content }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content }
+      ],
       model: modelId,
       temperature: 0.7,
       max_tokens: 1000,
@@ -142,7 +150,7 @@ export const sendMessage = async (
     role: 'assistant',
     created_at: new Date().toISOString(),
     metadata: { 
-      assistant_name: 'LM Studio Assistant',
+      assistant_name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${posture})`,
       model: modelId
     }
   }];

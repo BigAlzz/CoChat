@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Paper, Title, Box, Stack, ScrollArea, Button, Text, Group, ActionIcon, Alert } from '@mantine/core';
+import { Paper, Title, Box, Stack, ScrollArea, Button, Text, Group, ActionIcon, Alert, Loader } from '@mantine/core';
 import { IconPlus, IconX, IconAlertCircle } from '@tabler/icons-react';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import ModelSelector from './ModelSelector';
 import * as api from '../services/api';
+import { getSystemPrompt } from '../config/assistantConfig';
 
 interface ChatMessage {
   id: number;
@@ -51,7 +52,11 @@ const ChatPanel = ({
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>();
+  const [selectedRole, setSelectedRole] = useState<string>('analyst');
+  const [selectedPosture, setSelectedPosture] = useState<string>('professional');
   const [error, setError] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState<string>('Thinking...');
+  const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
 
   // Reset conversation when mode changes
   useEffect(() => {
@@ -107,8 +112,33 @@ const ChatPanel = ({
     };
   }, [selectedModel, panelIndex, totalPanels, mode]); // Add mode as a dependency
 
-  const handleModelSelect = async (modelId: string) => {
+  // Add a useEffect to update the loading message based on time elapsed
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessage('Thinking...');
+      setLoadingStartTime(null);
+      return;
+    }
+
+    setLoadingStartTime(Date.now());
+    const interval = setInterval(() => {
+      if (loadingStartTime) {
+        const elapsedSeconds = Math.floor((Date.now() - loadingStartTime) / 1000);
+        if (elapsedSeconds > 30) {
+          setLoadingMessage('Still processing... This model might take a few minutes to respond.');
+        } else if (elapsedSeconds > 10) {
+          setLoadingMessage('Processing your request... This might take a moment.');
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isLoading, loadingStartTime]);
+
+  const handleModelSelect = async (modelId: string, role: string, posture: string) => {
     setSelectedModel(modelId);
+    setSelectedRole(role);
+    setSelectedPosture(posture);
     setError(null);
     
     try {
@@ -118,9 +148,9 @@ const ChatPanel = ({
       await api.addAssistant(conversation.id, {
         name: "Assistant",
         model: modelId,
-        role: "assistant",
-        posture: mode === 'individual' ? "helpful" : mode === 'sequential' ? "sequential" : "parallel",
-        system_prompt: `You are a helpful AI assistant operating in ${mode} mode.`
+        role: role,
+        posture: posture,
+        system_prompt: getSystemPrompt(role, posture),
       });
     } catch (error) {
       console.error('Error setting model:', error);
@@ -149,7 +179,12 @@ const ChatPanel = ({
     setError(null);
 
     try {
-      const responses = await api.sendMessage(selectedModel, content);
+      const responses = await api.sendMessage(
+        selectedModel,
+        content,
+        selectedRole,
+        selectedPosture
+      );
       
       if (!responses || !Array.isArray(responses)) {
         console.error('Invalid response format:', responses);
@@ -311,8 +346,22 @@ const ChatPanel = ({
               />
             ))}
             {isLoading && (
-              <Paper p="md" style={{ backgroundColor: 'var(--surface-color)' }}>
-                <Text size="sm" c="dimmed">Thinking...</Text>
+              <Paper p="md" style={{ 
+                backgroundColor: 'var(--mantine-color-dark-6)',
+                border: '1px solid var(--mantine-color-dark-5)',
+                borderRadius: '8px'
+              }}>
+                <Group gap="sm" align="center">
+                  <Loader size="sm" color="green" />
+                  <Box>
+                    <Text size="sm" c="dimmed">{loadingMessage}</Text>
+                    {loadingStartTime && (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        Time elapsed: {Math.floor((Date.now() - loadingStartTime) / 1000)}s
+                      </Text>
+                    )}
+                  </Box>
+                </Group>
               </Paper>
             )}
             {error && (
@@ -323,6 +372,11 @@ const ChatPanel = ({
                 variant="light"
               >
                 {error}
+                {error.includes('taking longer') && (
+                  <Text size="sm" mt="xs" c="dimmed">
+                    The model is still processing. Please wait...
+                  </Text>
+                )}
               </Alert>
             )}
           </Stack>

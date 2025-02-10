@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Select, Button, Group, Text, Tooltip, Badge, Alert } from '@mantine/core';
+import { Select, Button, Group, Text, Tooltip, Badge, Alert, Stack } from '@mantine/core';
 import { IconRefresh, IconAlertCircle } from '@tabler/icons-react';
 import * as api from '../services/api';
+import { ASSISTANT_ROLES, ASSISTANT_POSTURES } from '../config/assistantConfig';
 
 interface Model {
   id: string;
@@ -11,7 +12,7 @@ interface Model {
 }
 
 interface ModelSelectorProps {
-  onModelSelect: (modelId: string) => void;
+  onModelSelect: (modelId: string, role: string, posture: string) => void;
   selectedModel?: string;
   disabled?: boolean;
   style?: React.CSSProperties;
@@ -21,14 +22,8 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const formatModelName = (modelId: string): string => {
-    return modelId
-      .split('-')
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ')
-      .replace(/(\d+b)/i, (match) => match.toUpperCase());
-  };
+  const [selectedRole, setSelectedRole] = useState<string>('analyst');
+  const [selectedPosture, setSelectedPosture] = useState<string>('professional');
 
   const getModelSize = (modelId: string): string => {
     const sizeMatch = modelId.match(/(\d+)b/i);
@@ -72,14 +67,38 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
     return () => clearInterval(interval);
   }, []);
 
+  const handleModelChange = (value: string | null) => {
+    if (value) {
+      onModelSelect(value, selectedRole, selectedPosture);
+    }
+  };
+
+  const handleRoleChange = (value: string | null) => {
+    if (value) {
+      setSelectedRole(value);
+      if (selectedModel) {
+        onModelSelect(selectedModel, value, selectedPosture);
+      }
+    }
+  };
+
+  const handlePostureChange = (value: string | null) => {
+    if (value) {
+      setSelectedPosture(value);
+      if (selectedModel) {
+        onModelSelect(selectedModel, selectedRole, value);
+      }
+    }
+  };
+
   return (
     <div className="model-selector" style={style}>
-      <Group gap="xs" align="flex-start">
-        <div style={{ flex: 1 }}>
+      <Stack gap="md">
+        <Group gap="xs" align="flex-start">
           <Select
             label={
               <Group gap="xs">
-                <Text>Model</Text>
+                <Text size="sm" fw={500}>Model</Text>
                 {selectedModel && (
                   <Tooltip label="Model size">
                     <Badge size="sm" variant="light" color="green">
@@ -111,89 +130,161 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
               }
             ].filter(group => group.items.length > 0) : []}
             value={selectedModel || null}
-            onChange={(value) => value && onModelSelect(value)}
+            onChange={handleModelChange}
             disabled={disabled || loading}
             searchable
             clearable
             maxDropdownHeight={200}
-          />
-          {error && (
-            <Alert 
-              icon={<IconAlertCircle size={16} />} 
-              color="red" 
-              title={
-                <Group gap="xs" align="center">
-                  <div
-                    style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      backgroundColor: '#ff3333',
-                      boxShadow: '0 0 5px #ff3333'
-                    }}
-                  />
-                  <Text>Connection Error</Text>
-                </Group>
-              }
-              mt="xs"
-              styles={{
-                root: {
-                  backgroundColor: 'rgba(255, 51, 51, 0.1)',
-                  borderColor: 'rgba(255, 51, 51, 0.2)'
+            style={{ flex: 1 }}
+            styles={{
+              input: {
+                backgroundColor: 'var(--mantine-color-dark-6)',
+                borderColor: 'var(--mantine-color-dark-5)',
+                color: 'var(--mantine-color-text)',
+              },
+              dropdown: {
+                backgroundColor: 'var(--mantine-color-dark-6)',
+                borderColor: 'var(--mantine-color-dark-5)',
+              },
+              item: {
+                color: 'var(--mantine-color-text)',
+                '&[data-selected]': {
+                  backgroundColor: 'var(--mantine-primary-color-filled)',
+                  color: 'black',
+                },
+                '&[data-hovered]': {
+                  backgroundColor: 'rgba(57, 255, 20, 0.1)',
                 }
-              }}
-            >
-              <Text size="sm">
-                {error}
-                {error.includes('Please ensure:') && (
-                  <ul style={{ 
-                    marginTop: '0.5rem', 
-                    marginBottom: 0, 
-                    paddingLeft: '1rem',
-                    color: 'rgba(255, 255, 255, 0.8)'
-                  }}>
-                    <li>LM Studio is running on your machine</li>
-                    <li>The backend server is running (cd app && python -m uvicorn main:app --reload)</li>
-                    <li>The API server is accessible at http://192.168.50.89:1234</li>
-                    <li>You have at least one model loaded in LM Studio</li>
-                  </ul>
-                )}
-              </Text>
-            </Alert>
-          )}
-        </div>
-        <Tooltip label="Refresh models">
-          <Button
-            variant="light"
-            onClick={fetchModels}
-            loading={loading}
-            disabled={disabled}
-            style={{ marginTop: 25 }}
-          >
-            <IconRefresh size={16} />
-          </Button>
-        </Tooltip>
-      </Group>
-      {selectedModel && models.length > 0 && (
-        <Group gap="xs" mt="xs">
-          <div
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' 
-                ? '#39ff14'  // Green for local models
-                : '#ffd700',  // Gold for remote models
-              boxShadow: `0 0 5px ${models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' 
-                ? '#39ff14'  // Green glow for local
-                : '#ffd700'}` // Gold glow for remote
+              }
             }}
           />
-          <Text size="sm" c="dimmed">
-            {models.find(m => m.id === selectedModel)?.owned_by === 'organization_owner' ? 'Local Model' : 'Remote Model'}
-          </Text>
+          <Tooltip label="Refresh models">
+            <Button
+              variant="light"
+              onClick={fetchModels}
+              loading={loading}
+              disabled={disabled}
+              style={{ marginTop: 25 }}
+            >
+              <IconRefresh size={16} />
+            </Button>
+          </Tooltip>
         </Group>
-      )}
+
+        {selectedModel && (
+          <Group grow>
+            <Select
+              label={<Text size="sm" fw={500}>Role</Text>}
+              placeholder="Select role"
+              data={ASSISTANT_ROLES.map(role => ({
+                value: role.value,
+                label: role.label,
+                description: role.description
+              }))}
+              value={selectedRole}
+              onChange={handleRoleChange}
+              disabled={disabled || loading}
+              styles={{
+                input: {
+                  backgroundColor: 'var(--mantine-color-dark-6)',
+                  borderColor: 'var(--mantine-color-dark-5)',
+                  color: 'var(--mantine-color-text)',
+                },
+                dropdown: {
+                  backgroundColor: 'var(--mantine-color-dark-6)',
+                  borderColor: 'var(--mantine-color-dark-5)',
+                },
+                item: {
+                  color: 'var(--mantine-color-text)',
+                  '&[data-selected]': {
+                    backgroundColor: 'var(--mantine-primary-color-filled)',
+                    color: 'black',
+                  },
+                  '&[data-hovered]': {
+                    backgroundColor: 'rgba(57, 255, 20, 0.1)',
+                  }
+                }
+              }}
+            />
+            <Select
+              label={<Text size="sm" fw={500}>Posture</Text>}
+              placeholder="Select posture"
+              data={ASSISTANT_POSTURES.map(posture => ({
+                value: posture.value,
+                label: posture.label,
+                description: posture.description
+              }))}
+              value={selectedPosture}
+              onChange={handlePostureChange}
+              disabled={disabled || loading}
+              styles={{
+                input: {
+                  backgroundColor: 'var(--mantine-color-dark-6)',
+                  borderColor: 'var(--mantine-color-dark-5)',
+                  color: 'var(--mantine-color-text)',
+                },
+                dropdown: {
+                  backgroundColor: 'var(--mantine-color-dark-6)',
+                  borderColor: 'var(--mantine-color-dark-5)',
+                },
+                item: {
+                  color: 'var(--mantine-color-text)',
+                  '&[data-selected]': {
+                    backgroundColor: 'var(--mantine-primary-color-filled)',
+                    color: 'black',
+                  },
+                  '&[data-hovered]': {
+                    backgroundColor: 'rgba(57, 255, 20, 0.1)',
+                  }
+                }
+              }}
+            />
+          </Group>
+        )}
+
+        {error && (
+          <Alert 
+            icon={<IconAlertCircle size={16} />} 
+            color="red" 
+            title={
+              <Group gap="xs" align="center">
+                <div
+                  style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ff3333',
+                    boxShadow: '0 0 5px #ff3333'
+                  }}
+                />
+                <Text>Connection Error</Text>
+              </Group>
+            }
+            mt="md"
+            styles={{
+              root: {
+                backgroundColor: 'rgba(255, 51, 51, 0.1)',
+                borderColor: 'rgba(255, 51, 51, 0.2)'
+              }
+            }}
+          >
+            {error}
+            {error.includes('Please ensure:') && (
+              <ul style={{ 
+                marginTop: '0.5rem', 
+                marginBottom: 0, 
+                paddingLeft: '1rem',
+                color: 'rgba(255, 255, 255, 0.8)'
+              }}>
+                <li>LM Studio is running on your machine</li>
+                <li>The backend server is running (cd app && python -m uvicorn main:app --reload)</li>
+                <li>The API server is accessible at http://192.168.50.89:1234</li>
+                <li>You have at least one model loaded in LM Studio</li>
+              </ul>
+            )}
+          </Alert>
+        )}
+      </Stack>
     </div>
   );
 };

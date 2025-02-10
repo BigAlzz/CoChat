@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./static:/app/static
+    environment:
+      - PYTHONPATH=/app
+      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL}
+      - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - cochat-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - cochat-network
+
+networks:
+  cochat-network:
+    driver: bridge 

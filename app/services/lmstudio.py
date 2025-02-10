@@ -1,6 +1,6 @@
 import httpx
 from typing import List, Dict, Optional
-from ..core.config import settings
+from app.core.config import settings
 import asyncio
 import json
 
@@ -14,7 +14,7 @@ class LMStudioService:
     async def get_available_models(self, force_refresh: bool = False) -> List[Dict]:
         """Fetch available models from LM Studio."""
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:  # Increased timeout to 120 seconds
+            async with httpx.AsyncClient(timeout=300.0) as client:  # 300 seconds timeout
                 response = await client.get(f"{self.base_url}/v1/models")
                 response.raise_for_status()
                 data = response.json()
@@ -34,7 +34,7 @@ class LMStudioService:
     ) -> Optional[str]:
         """Generate a response from the LLM model."""
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:  # 120 second timeout for generation
+            async with httpx.AsyncClient(timeout=300.0) as client:  # 300 second timeout for generation
                 payload = {
                     "messages": messages,
                     "model": model,
