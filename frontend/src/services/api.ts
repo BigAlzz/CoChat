@@ -38,6 +38,11 @@ export interface Model {
   owned_by?: string;
 }
 
+interface StreamChunk {
+  content: string;
+  assistant_name: string;
+}
+
 // Create API instance
 const api = axios.create({
   baseURL: LMSTUDIO_API_URL,
@@ -122,38 +127,113 @@ export const sendMessage = async (
   modelId: string,
   content: string,
   role: string,
-  posture: string
+  posture: string,
+  onChunk?: (chunk: StreamChunk) => void
 ) => {
   const systemPrompt = getSystemPrompt(role, posture);
   
-  const response = await api.post(
-    '/chat/completions',
-    { 
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content }
-      ],
-      model: modelId,
-      temperature: 0.7,
-      max_tokens: 1000,
-      stream: false
+  if (onChunk) {
+    // Use streaming endpoint
+    const response = await fetch(
+      `${LMSTUDIO_API_URL}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content }
+          ],
+          model: modelId,
+          temperature: 0.7,
+          max_tokens: 1000,
+          stream: true
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  );
-  
-  if (!response.data || !response.data.choices || !response.data.choices[0]) {
-    throw new Error('Invalid response format from LM Studio');
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    if (!reader) {
+      throw new Error('No response body reader available');
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(5);
+          if (data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.choices?.[0]?.delta?.content) {
+              onChunk({
+                content: parsed.choices[0].delta.content,
+                assistant_name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${posture})`
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e);
+          }
+        }
+      }
+    }
+
+    return [{
+      id: Date.now(),
+      content: 'Streaming response completed',
+      role: 'assistant',
+      created_at: new Date().toISOString(),
+      metadata: {
+        assistant_name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${posture})`,
+        model: modelId
+      }
+    }];
+  } else {
+    // Use non-streaming endpoint for backward compatibility
+    const response = await api.post(
+      '/chat/completions',
+      {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content }
+        ],
+        model: modelId,
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: false
+      }
+    );
+
+    if (!response.data || !response.data.choices || !response.data.choices[0]) {
+      throw new Error('Invalid response format from LM Studio');
+    }
+
+    return [{
+      id: Date.now(),
+      content: response.data.choices[0].message.content,
+      role: 'assistant',
+      created_at: new Date().toISOString(),
+      metadata: {
+        assistant_name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${posture})`,
+        model: modelId
+      }
+    }];
   }
-  
-  return [{
-    id: Date.now(),
-    content: response.data.choices[0].message.content,
-    role: 'assistant',
-    created_at: new Date().toISOString(),
-    metadata: { 
-      assistant_name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${posture})`,
-      model: modelId
-    }
-  }];
 };
 
 // Mock endpoints for conversation management

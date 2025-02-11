@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
@@ -6,6 +7,7 @@ from app.services.lmstudio import lmstudio_service
 from app.models import models
 from app.schemas import conversation as schemas
 import asyncio
+import json
 
 router = APIRouter()
 
@@ -209,4 +211,73 @@ async def update_model(model_id: str, model: schemas.Model):
         })
         return {"message": "Model updated successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/conversations/{conversation_id}/messages/stream")
+async def create_message_stream(
+    conversation_id: int,
+    message: schemas.MessageCreate,
+    db: Session = Depends(get_db)
+):
+    """Create a new message and stream the response."""
+    # Get conversation and its assistants
+    conversation = db.query(models.Conversation).filter(
+        models.Conversation.id == conversation_id
+    ).first()
+    
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    assistants = db.query(models.ConversationAssistant).filter(
+        models.ConversationAssistant.conversation_id == conversation_id
+    ).order_by(models.ConversationAssistant.order).all()
+    
+    if not assistants:
+        raise HTTPException(status_code=400, detail="No assistants configured for this conversation")
+    
+    # Save user message
+    db_message = models.Message(
+        conversation_id=conversation_id,
+        content=message.content,
+        role="user"
+    )
+    db.add(db_message)
+    db.commit()
+
+    async def generate_stream():
+        try:
+            # Process message through assistants
+            for assistant in assistants:
+                messages = [{"role": "user", "content": message.content}]
+                if assistant.system_prompt:
+                    messages.insert(0, {"role": "system", "content": assistant.system_prompt})
+                
+                async for chunk in lmstudio_service.generate_response_stream(
+                    messages=messages,
+                    model=assistant.model,
+                ):
+                    # Format the chunk as a Server-Sent Event
+                    yield f"data: {json.dumps({'content': chunk, 'assistant_name': assistant.name})}\n\n"
+                
+                # Save the complete response to the database
+                db_response = models.Message(
+                    conversation_id=conversation_id,
+                    content=chunk,  # This will be the last chunk
+                    role="assistant",
+                    assistant_id=assistant.id
+                )
+                db.add(db_response)
+                db.commit()
+            
+            # Signal the end of the stream
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            print(f"Error in stream generation: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream"
+    ) 

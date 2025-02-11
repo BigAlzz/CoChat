@@ -57,6 +57,8 @@ const ChatPanel = ({
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>('Thinking...');
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
+  const [streamingContent, setStreamingContent] = useState<string>('');
+  const [isStreaming, setIsStreaming] = useState(false);
 
   // Reset conversation when mode changes
   useEffect(() => {
@@ -177,43 +179,45 @@ const ChatPanel = ({
     
     setIsLoading(true);
     setError(null);
+    setStreamingContent('');
+    setIsStreaming(true);
 
     try {
-      const responses = await api.sendMessage(
+      const streamingMessage: ChatMessage = {
+        id: Date.now(),
+        content: '',
+        role: 'assistant'
+      };
+
+      setMessages(prev => [...prev, streamingMessage]);
+
+      await api.sendMessage(
         selectedModel,
         content,
         selectedRole,
-        selectedPosture
+        selectedPosture,
+        (chunk) => {
+          setStreamingContent(prev => {
+            const newContent = prev + chunk.content;
+            // Update the streaming message in the messages array
+            setMessages(messages => 
+              messages.map(msg => 
+                msg.id === streamingMessage.id 
+                  ? { ...msg, content: newContent, assistantName: chunk.assistant_name }
+                  : msg
+              )
+            );
+            return newContent;
+          });
+        }
       );
       
-      if (!responses || !Array.isArray(responses)) {
-        console.error('Invalid response format:', responses);
-        setError('Failed to get response from the model. Please try again.');
-        return;
-      }
-      
-      const newMessages = responses
-        .filter((msg: LMStudioMessage) => msg.role === 'assistant')
-        .map((msg: LMStudioMessage) => ({
-          id: msg.id,
-          content: msg.content || 'No response from model',
-          role: 'assistant' as const,
-          assistantName: msg.metadata?.assistant_name
-        }));
-
-      if (newMessages.length === 0) {
-        console.error('No assistant messages in response:', responses);
-        setError('No response received from the model. Please try again.');
-        return;
-      }
-
-      setMessages(prev => [...prev, ...newMessages]);
+      setIsStreaming(false);
 
       // Handle sequential and iteration modes
       if ((mode === 'sequential' || mode === 'iteration') && onSequentialMessage) {
-        const lastResponse = newMessages[newMessages.length - 1];
         setTimeout(() => {
-          onSequentialMessage(lastResponse.content);
+          onSequentialMessage(streamingContent);
         }, 100);
       }
       
@@ -224,8 +228,11 @@ const ChatPanel = ({
     } catch (error) {
       console.error('Error sending message:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
+      // Remove the streaming message if there was an error
+      setMessages(prev => prev.filter(msg => msg.content !== ''));
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 

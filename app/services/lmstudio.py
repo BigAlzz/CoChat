@@ -1,5 +1,5 @@
 import httpx
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 from app.core.config import settings
 import asyncio
 import json
@@ -14,16 +14,69 @@ class LMStudioService:
     async def get_available_models(self, force_refresh: bool = False) -> List[Dict]:
         """Fetch available models from LM Studio."""
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:  # 300 seconds timeout
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.get(f"{self.base_url}/v1/models")
                 response.raise_for_status()
                 data = response.json()
                 if isinstance(data, dict) and "data" in data:
                     return data["data"]
-                return data  # If it's already a list
+                return data
         except Exception as e:
             print(f"Warning: Could not connect to LM Studio: {e}")
             return []
+
+    async def generate_response_stream(
+        self,
+        messages: List[Dict],
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 1000,
+    ) -> AsyncGenerator[str, None]:
+        """Generate a streaming response from the LLM model."""
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                payload = {
+                    "messages": messages,
+                    "model": model,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": True
+                }
+                
+                headers = {}
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
+                
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/v1/chat/completions",
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    response.raise_for_status()
+                    buffer = ""
+                    async for chunk in response.aiter_lines():
+                        if chunk.startswith("data: "):
+                            chunk = chunk[6:]  # Remove "data: " prefix
+                            if chunk.strip() == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(chunk)
+                                if data.get("choices") and len(data["choices"]) > 0:
+                                    delta = data["choices"][0].get("delta", {})
+                                    if "content" in delta:
+                                        content = delta["content"]
+                                        buffer += content
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    if buffer:  # Return any remaining buffered content
+                        yield buffer
+
+        except Exception as e:
+            print(f"Error generating streaming response: {e}")
+            yield f"Error: {str(e)}"
 
     async def generate_response(
         self,
@@ -32,39 +85,17 @@ class LMStudioService:
         temperature: float = 0.7,
         max_tokens: int = 1000,
     ) -> Optional[str]:
-        """Generate a response from the LLM model."""
+        """Generate a complete response from the LLM model."""
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:  # 300 second timeout for generation
-                payload = {
-                    "messages": messages,
-                    "model": model,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "stream": False
-                }
-                
-                headers = {}
-                if self.api_key:
-                    headers["Authorization"] = f"Bearer {self.api_key}"
-                
-                response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                if not result or "choices" not in result or not result["choices"]:
-                    print("Invalid response format from LM Studio:", result)
-                    return None
-                    
-                choice = result["choices"][0]
-                if "message" not in choice or "content" not in choice["message"]:
-                    print("Invalid message format from LM Studio:", choice)
-                    return None
-                    
-                return choice["message"]["content"]
+            full_response = ""
+            async for chunk in self.generate_response_stream(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens
+            ):
+                full_response += chunk
+            return full_response
         except Exception as e:
             print(f"Error generating response: {e}")
             return None
