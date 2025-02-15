@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Drawer, Title, Stack, Select, Slider, Group, Text, Button, ActionIcon, Divider, Badge, Notification } from '@mantine/core';
-import { IconVolume, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
+import React from 'react';
+import { Drawer, Title, Stack, Select, Slider, Group, Text, Button, Divider } from '@mantine/core';
+import { IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
 import AudioManager from '../utils/AudioManager';
-import { useAudioStore, Voice } from '../utils/audio';
-import type { VoiceSettings } from '../utils/audio';
+import { useAudioStore } from '../utils/audio';
+import type { VoiceSettings as VoiceSettingsType } from '../utils/audio';
 import { notifications } from '@mantine/notifications';
 
 interface VoiceSettingsProps {
@@ -14,14 +14,6 @@ interface VoiceSettingsProps {
   isEmbedded?: boolean;
 }
 
-interface WindowsVoice {
-  id: string;
-  name: string;
-  description: string;
-  service: string;
-  isDefault: boolean;
-}
-
 const VoiceSettings: React.FC<VoiceSettingsProps> = ({ 
   opened, 
   onClose, 
@@ -29,22 +21,42 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   modelName,
   isEmbedded = false 
 }) => {
-  const [selectedVoice, setSelectedVoice] = useState<string>('');
-  const [rate, setRate] = useState<number>(1);
-  const [pitch, setPitch] = useState<number>(1);
-  const [volume, setVolume] = useState<number>(1);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [voices, setVoices] = useState<Voice[]>([]);
+  const [selectedVoice, setSelectedVoice] = React.useState<string>('');
+  const [rate, setRate] = React.useState<number>(1);
+  const [pitch, setPitch] = React.useState<number>(1);
+  const [volume, setVolume] = React.useState<number>(1);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [voices, setVoices] = React.useState<Array<{ id: string; name: string; description: string }>>([]);
+  const [loading, setLoading] = React.useState(false);
   const { isMuted, updateVoiceSettings, getVoiceSettings } = useAudioStore();
-  const [loading, setLoading] = useState(false);
   const audioManager = AudioManager.getInstance();
 
-  useEffect(() => {
-    loadVoices();
-    loadSavedSettings();
-  }, [modelId]);
+  const loadVoices = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://localhost:8000/api/v1/tts/voices');
+      if (!response.ok) {
+        throw new Error('Failed to fetch voices');
+      }
+      const voiceData = await response.json();
+      setVoices(voiceData.map((voice: any) => ({
+        id: voice.id,
+        name: voice.name,
+        description: voice.description || voice.name
+      })));
+    } catch (error) {
+      console.error('Error loading voices:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to load voices. Please check if the TTS service is running.',
+        color: 'red'
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const loadSavedSettings = () => {
+  const loadSavedSettings = React.useCallback(() => {
     const settings = getVoiceSettings(modelId || 'default');
     if (settings) {
       setSelectedVoice(settings.voiceUri);
@@ -53,83 +65,31 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
       setVolume(settings.volume || 1);
       audioManager.setVoice(settings.voiceUri);
     }
-  };
+  }, [modelId, getVoiceSettings, audioManager]);
 
-  const loadVoices = async () => {
-    try {
-      setLoading(true);
-      console.log('Loading available voices...');
-      const response = await fetch('http://localhost:8000/api/v1/tts/voices');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch voices: ${response.status}`);
-      }
-      
-      const availableVoices = await response.json();
-      console.log('Loaded voices:', availableVoices);
-      
-      if (!availableVoices || availableVoices.length === 0) {
-        notifications.show({
-          title: 'Warning',
-          message: 'No voices found. Please check if the TTS service is running and properly configured.',
-          color: 'yellow',
-          autoClose: false
-        });
-        return;
-      }
-      
-      // Filter and format voices
-      const formattedVoices = availableVoices
-        .map((voice: WindowsVoice) => ({
-          id: voice.id,
-          name: voice.name,
-          description: voice.description || voice.name,
-          isDefault: voice.isDefault
-        }));
-      
-      setVoices(formattedVoices);
-      
-      // Set default voice if none selected
-      if (!selectedVoice && formattedVoices.length > 0) {
-        const defaultVoice = formattedVoices.find((v: Voice) => v.isDefault) || formattedVoices[0];
-        console.log('Setting default voice:', defaultVoice.name);
-        setSelectedVoice(defaultVoice.id);
-        audioManager.setVoice(defaultVoice.id);
-      }
-    } catch (error) {
-      console.error('Failed to load voices:', error);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to load voices. Please check if the TTS service is running and accessible.',
-        color: 'red',
-        autoClose: false
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  React.useEffect(() => {
+    void loadVoices();
+    loadSavedSettings();
+  }, [loadVoices, loadSavedSettings]);
 
   const handleVoiceChange = (value: string | null) => {
     if (value) {
-      console.log('Changing voice to:', value);
       setSelectedVoice(value);
       audioManager.setVoice(value);
       
-      // Save settings immediately when voice changes
-      const settings = {
+      const settings: VoiceSettingsType = {
         voiceUri: value,
         rate,
         pitch,
         volume
       };
-      console.log('Saving voice settings:', settings);
       updateVoiceSettings(modelId || 'default', settings);
     }
   };
 
   const handleRateChange = (value: number) => {
     setRate(value);
-    const settings = {
+    const settings: VoiceSettingsType = {
       voiceUri: selectedVoice,
       rate: value,
       pitch,
@@ -141,7 +101,7 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
 
   const handlePitchChange = (value: number) => {
     setPitch(value);
-    const settings = {
+    const settings: VoiceSettingsType = {
       voiceUri: selectedVoice,
       rate,
       pitch: value,
@@ -153,7 +113,7 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
 
   const handleVolumeChange = (value: number) => {
     setVolume(value);
-    const settings = {
+    const settings: VoiceSettingsType = {
       voiceUri: selectedVoice,
       rate,
       pitch,
@@ -176,7 +136,6 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
     setIsPlaying(true);
     setLoading(true);
     try {
-      console.log('Testing voice:', selectedVoice);
       await audioManager.speak('Hello, this is a test of the text to speech system.');
       notifications.show({
         title: 'Success',
@@ -194,33 +153,6 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
       setIsPlaying(false);
       setLoading(false);
     }
-  };
-
-  const handleSaveSettings = () => {
-    if (!selectedVoice) {
-      notifications.show({
-        title: 'Warning',
-        message: 'Please select a voice first',
-        color: 'yellow'
-      });
-      return;
-    }
-
-    const settings = {
-      voiceUri: selectedVoice,
-      rate,
-      pitch,
-      volume
-    };
-
-    console.log('Saving voice settings:', settings);
-    updateVoiceSettings(modelId || 'default', settings);
-
-    notifications.show({
-      title: 'Success',
-      message: 'Voice settings saved successfully',
-      color: 'green'
-    });
   };
 
   const handleResetDefaults = () => {
@@ -244,7 +176,7 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
         }))}
         value={selectedVoice}
         onChange={handleVoiceChange}
-        disabled={isMuted}
+        disabled={isMuted || loading}
       />
 
       <Stack gap="xs">
@@ -286,7 +218,7 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
         />
       </Stack>
 
-      <Group gap="md" mt="xl">
+      <Group gap="xs">
         <Button
           variant="light"
           color={isPlaying ? "red" : "blue"}
@@ -298,21 +230,13 @@ const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           {isPlaying ? "Stop" : "Test Voice"}
         </Button>
 
-        <Group gap="xs">
-          <Button
-            variant="outline"
-            onClick={handleResetDefaults}
-            disabled={isMuted}
-          >
-            Reset
-          </Button>
-          <Button
-            onClick={handleSaveSettings}
-            disabled={isMuted || !selectedVoice}
-          >
-            Save Settings
-          </Button>
-        </Group>
+        <Button
+          variant="outline"
+          onClick={handleResetDefaults}
+          disabled={isMuted}
+        >
+          Reset
+        </Button>
       </Group>
     </Stack>
   );

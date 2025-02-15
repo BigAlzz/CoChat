@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Select, Button, Group, Text, Tooltip, Badge, Alert, Stack, Box, ComboboxItem } from '@mantine/core';
+import { Select, Button, Group, Text, Tooltip, Badge, Alert, Stack, Box } from '@mantine/core';
 import { IconRefresh, IconAlertCircle } from '@tabler/icons-react';
 import * as api from '../services/api';
 import { ASSISTANT_ROLES, ASSISTANT_POSTURES, DEFAULT_ROLE, DEFAULT_POSTURE } from '../config/assistantConfig';
@@ -134,19 +134,34 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
             disabled={disabled || loading}
             searchable
             clearable
-            maxDropdownHeight={200}
+            maxDropdownHeight={400}
             style={{ flex: 1 }}
             styles={{
               input: {
                 backgroundColor: 'var(--mantine-color-dark-6)',
                 borderColor: 'var(--mantine-color-dark-5)',
                 color: 'var(--mantine-color-text)',
+                animation: selectedModel ? 'none' : 'glowPulse 2s infinite',
+                '@keyframes glowPulse': {
+                  '0%': {
+                    boxShadow: '0 0 5px rgba(57, 255, 20, 0)',
+                    borderColor: 'var(--mantine-color-dark-5)',
+                  },
+                  '50%': {
+                    boxShadow: '0 0 10px rgba(57, 255, 20, 0.3)',
+                    borderColor: 'rgba(57, 255, 20, 0.5)',
+                  },
+                  '100%': {
+                    boxShadow: '0 0 5px rgba(57, 255, 20, 0)',
+                    borderColor: 'var(--mantine-color-dark-5)',
+                  }
+                }
               },
               dropdown: {
                 backgroundColor: 'var(--mantine-color-dark-6)',
                 borderColor: 'var(--mantine-color-dark-5)',
               },
-              item: {
+              option: {
                 color: 'var(--mantine-color-text)',
                 '&[data-selected]': {
                   backgroundColor: 'var(--mantine-primary-color-filled)',
@@ -194,7 +209,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                   backgroundColor: 'var(--mantine-color-dark-6)',
                   borderColor: 'var(--mantine-color-dark-5)',
                 },
-                item: {
+                option: {
                   color: 'var(--mantine-color-text)',
                   '&[data-selected]': {
                     backgroundColor: 'var(--mantine-primary-color-filled)',
@@ -227,7 +242,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                   backgroundColor: 'var(--mantine-color-dark-6)',
                   borderColor: 'var(--mantine-color-dark-5)',
                 },
-                item: {
+                option: {
                   color: 'var(--mantine-color-text)',
                   '&[data-selected]': {
                     backgroundColor: 'var(--mantine-primary-color-filled)',

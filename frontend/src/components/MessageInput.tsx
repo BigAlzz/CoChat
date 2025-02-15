@@ -3,6 +3,7 @@ import { Textarea, Button, Group, ActionIcon, Box, FileButton, Text } from '@man
 import { IconSend, IconMicrophone, IconUpload, IconFile, IconX } from '@tabler/icons-react';
 import { useAudioStore } from '../utils/audio';
 import { notifications } from '@mantine/notifications';
+import Papa from 'papaparse';
 
 interface MessageInputProps {
   onSend: (message: string) => void;
@@ -53,29 +54,81 @@ export default function MessageInput({ onSend, onFileUpload, disabled = false, s
     );
   };
 
-  const handleFileSelect = (file: File) => {
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+  const handleFileSelect = async (file: File) => {
+    if (file.size > 20 * 1024 * 1024) { // 20MB limit
       notifications.show({
         title: 'Error',
-        message: 'File size must be less than 10MB',
+        message: 'File size must be less than 20MB',
         color: 'red'
       });
       return;
     }
 
     setSelectedFile(file);
-    // Read file content
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const content = e.target?.result;
-      if (typeof content === 'string') {
-        setMessage(prev => prev + (prev ? '\n\n' : '') + `[File Content from ${file.name}]:\n${content}`);
-      }
-    };
-    reader.readAsText(file);
     
-    if (onFileUpload) {
-      onFileUpload(file);
+    try {
+      let content = '';
+      const fileType = file.type || file.name.split('.').pop()?.toLowerCase();
+
+      if (fileType === 'text/csv' || file.name.endsWith('.csv')) {
+        // Handle CSV files
+        content = await new Promise((resolve, reject) => {
+          Papa.parse(file, {
+            complete: (results) => {
+              const formattedData = results.data
+                .map(row => row.join(','))
+                .join('\n');
+              resolve(`[CSV Content from ${file.name}]:\n${formattedData}`);
+            },
+            error: (error) => reject(error),
+          });
+        });
+      } else if (fileType === 'application/pdf' || file.name.endsWith('.pdf')) {
+        // For PDF files, we'll need to send it to the backend for processing
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('http://localhost:8000/api/v1/files/extract-pdf', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to extract PDF content');
+        }
+        
+        const result = await response.json();
+        content = `[PDF Content from ${file.name}]:\n${result.content}`;
+      } else {
+        // Handle text files as before
+        const reader = new FileReader();
+        content = await new Promise((resolve, reject) => {
+          reader.onload = (e) => {
+            const content = e.target?.result;
+            if (typeof content === 'string') {
+              resolve(`[File Content from ${file.name}]:\n${content}`);
+            } else {
+              reject(new Error('Failed to read file content'));
+            }
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(file);
+        });
+      }
+
+      setMessage(prev => prev + (prev ? '\n\n' : '') + content);
+      
+      if (onFileUpload) {
+        onFileUpload(file);
+      }
+    } catch (error) {
+      console.error('Error processing file:', error);
+      notifications.show({
+        title: 'Error',
+        message: `Failed to process file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        color: 'red'
+      });
+      setSelectedFile(null);
     }
   };
 
@@ -95,11 +148,15 @@ export default function MessageInput({ onSend, onFileUpload, disabled = false, s
       onDrop={(e) => {
         e.preventDefault();
         e.currentTarget.style.backgroundColor = '';
-        const content = e.dataTransfer.getData('text/plain');
-        if (content) {
-          setMessage(prev => prev + (prev ? '\n' : '') + content);
-          if (textareaRef.current) {
-            textareaRef.current.focus();
+        if (e.dataTransfer.files.length > 0) {
+          handleFileSelect(e.dataTransfer.files[0]);
+        } else {
+          const content = e.dataTransfer.getData('text/plain');
+          if (content) {
+            setMessage(prev => prev + (prev ? '\n' : '') + content);
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+            }
           }
         }
       }}
@@ -124,7 +181,7 @@ export default function MessageInput({ onSend, onFileUpload, disabled = false, s
                 handleFileSelect(file);
               }
             }}
-            accept=".txt,.md,.json,.csv,.log"
+            accept=".txt,.md,.json,.csv,.log,.pdf"
           >
             {(props) => (
               <ActionIcon
@@ -133,6 +190,7 @@ export default function MessageInput({ onSend, onFileUpload, disabled = false, s
                 {...props}
                 disabled={disabled}
                 size="lg"
+                title="Upload file (TXT, MD, JSON, CSV, LOG, PDF)"
               >
                 <IconUpload size={20} />
               </ActionIcon>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Drawer, Stack, Text, Switch, rem, Button, FileInput, Group, Box, Title, Divider } from '@mantine/core';
+import React from 'react';
+import { Drawer, Stack, Text, Switch, Button, FileInput, Group, Box, Title, Divider } from '@mantine/core';
 import VoiceSettings from './VoiceSettings';
 import { useAudioStore } from '../utils/audio';
 import AudioManager from '../utils/AudioManager';
@@ -7,53 +7,55 @@ import AudioManager from '../utils/AudioManager';
 interface SettingsPanelProps {
   opened: boolean;
   onClose: () => void;
-  models: { id: string; name: string }[];
+  models: Array<{ id: string; name: string }>;
 }
 
 export function SettingsPanel({ opened, onClose, models }: SettingsPanelProps) {
-  const { isMuted, toggleMute } = useAudioStore();
-  const [completionSound, setCompletionSound] = useState<File | null>(null);
-  const [isTestingSound, setIsTestingSound] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState<string>('');
+  const { isMuted, toggleMute, setCompletionSound, completionSoundUrl } = useAudioStore();
+  const [completionSoundFile, setCompletionSoundFile] = React.useState<File | null>(null);
+  const [isTestingSound, setIsTestingSound] = React.useState(false);
+  const [selectedVoice, setSelectedVoice] = React.useState<string>('');
   const audioManager = AudioManager.getInstance();
 
   // Load saved completion sound on mount
-  useEffect(() => {
-    const savedSoundUrl = localStorage.getItem('completionSoundUrl');
-    if (savedSoundUrl) {
-      fetch(savedSoundUrl)
+  React.useEffect(() => {
+    if (completionSoundUrl) {
+      void fetch(completionSoundUrl)
         .then(response => response.blob())
         .then(blob => {
-          const fileName = savedSoundUrl.split('/').pop() || 'completion-sound';
+          const fileName = completionSoundUrl.split('/').pop() || 'completion-sound';
           const file = new File([blob], fileName, { type: blob.type });
-          setCompletionSound(file);
+          setCompletionSoundFile(file);
         })
-        .catch(console.error);
+        .catch(error => {
+          console.error('Error loading completion sound:', error);
+        });
     }
-  }, []);
+  }, [completionSoundUrl]);
 
   const handleSoundFileChange = async (file: File | null) => {
     if (file) {
-      setCompletionSound(file);
+      setCompletionSoundFile(file);
       const soundUrl = URL.createObjectURL(file);
       try {
         await audioManager.playSound(soundUrl); // Test that the sound can be loaded
-        localStorage.setItem('completionSoundUrl', soundUrl);
+        setCompletionSound(soundUrl);
       } catch (error) {
         console.error('Error loading sound:', error);
+        setCompletionSoundFile(null);
         setCompletionSound(null);
       }
     } else {
+      setCompletionSoundFile(null);
       setCompletionSound(null);
-      localStorage.removeItem('completionSoundUrl');
     }
   };
 
   const handleTestSound = async () => {
-    if (completionSound) {
+    if (completionSoundFile) {
       setIsTestingSound(true);
       try {
-        const soundUrl = URL.createObjectURL(completionSound);
+        const soundUrl = URL.createObjectURL(completionSoundFile);
         await audioManager.playSound(soundUrl);
       } catch (error) {
         console.error('Error playing test sound:', error);
@@ -89,13 +91,13 @@ export function SettingsPanel({ opened, onClose, models }: SettingsPanelProps) {
               <FileInput
                 placeholder="Choose sound file"
                 accept="audio/*"
-                value={completionSound}
+                value={completionSoundFile}
                 onChange={handleSoundFileChange}
                 style={{ flex: 1 }}
               />
               <Button 
                 onClick={handleTestSound}
-                disabled={!completionSound || isTestingSound}
+                disabled={!completionSoundFile || isTestingSound}
                 variant="light"
               >
                 {isTestingSound ? 'Playing...' : 'Test Sound'}

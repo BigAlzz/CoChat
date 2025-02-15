@@ -21,9 +21,11 @@ interface ModelVoiceSettings {
 
 interface AudioState {
   isMuted: boolean;
-  voiceSettings: Record<string, VoiceSettings>;
+  autoReadEnabled: boolean;
+  voiceSettings: { [key: string]: VoiceSettings };
   completionSoundUrl: string | null;
   toggleMute: () => void;
+  toggleAutoRead: () => void;
   speak: (text: string, options: SpeakOptions, modelId?: string) => void;
   stopSpeaking: () => void;
   startListening: (onResult: (text: string) => void, onError: (error: Error) => void) => void;
@@ -144,21 +146,23 @@ class SpeechRecognitionManager {
 const speechRecognition = new SpeechRecognitionManager();
 
 const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
-  voiceUri: 'Microsoft Hazel Desktop',
-  rate: 1.0,
-  pitch: 1.0,
-  volume: 1.0
+  voiceUri: '',
+  rate: 1,
+  pitch: 1,
+  volume: 1
 };
 
 export const useAudioStore = create<AudioState>()(
   persist(
     (set, get) => ({
       isMuted: false,
+      autoReadEnabled: false,
       voiceSettings: {
         default: DEFAULT_VOICE_SETTINGS
       },
       completionSoundUrl: null,
       toggleMute: () => set(state => ({ isMuted: !state.isMuted })),
+      toggleAutoRead: () => set(state => ({ autoReadEnabled: !state.autoReadEnabled })),
       speak: async (text, options, modelId) => {
         if (get().isMuted) return;
         
@@ -216,11 +220,6 @@ export const useAudioStore = create<AudioState>()(
         return state.voiceSettings[modelId] || state.voiceSettings.default || DEFAULT_VOICE_SETTINGS;
       },
       setCompletionSound: (soundUrl: string | null) => {
-        if (soundUrl) {
-          localStorage.setItem('completionSoundUrl', soundUrl);
-        } else {
-          localStorage.removeItem('completionSoundUrl');
-        }
         set({ completionSoundUrl: soundUrl });
       },
       playCompletionSound: async () => {
@@ -240,7 +239,10 @@ export const useAudioStore = create<AudioState>()(
     {
       name: 'audio-storage',
       partialize: (state) => ({
-        voiceSettings: state.voiceSettings
+        isMuted: state.isMuted,
+        autoReadEnabled: state.autoReadEnabled,
+        voiceSettings: state.voiceSettings,
+        completionSoundUrl: state.completionSoundUrl
       })
     }
   )
@@ -255,6 +257,7 @@ class AudioManager {
   private currentRate: number = 1.0;
   private currentPitch: number = 1.0;
   private currentVolume: number = 1.0;
+  private currentVoice: string = '';
 
   private constructor() {
     // Initialize audio context when needed
@@ -291,6 +294,9 @@ class AudioManager {
 
   private async generateAndPlaySpeech(text: string, settings: VoiceSettings, onEnd?: () => void) {
     try {
+      // Stop any currently playing audio before generating new speech
+      this.stopSpeaking();
+
       const response = await axios.post(`${API_BASE_URL}/api/v1/tts/speak`, {
         text,
         voice: settings.voiceUri,
@@ -308,6 +314,9 @@ class AudioManager {
       audio.volume = this.currentVolume;
       audio.playbackRate = this.currentRate;
 
+      // Set voice
+      this.currentVoice = settings.voiceUri;
+
       // Play the audio
       await audio.play();
 
@@ -315,6 +324,7 @@ class AudioManager {
       return new Promise<void>((resolve) => {
         audio.onended = () => {
           this.currentAudio = null;
+          this.currentVoice = '';
           onEnd?.();
           resolve();
         };
@@ -322,6 +332,7 @@ class AudioManager {
     } catch (error) {
       console.error('Error generating speech:', error);
       this.currentAudio = null;
+      this.currentVoice = '';
       onEnd?.();
     }
   }
@@ -331,6 +342,9 @@ class AudioManager {
     if (!this.audioContext) return;
 
     try {
+      // Stop any currently playing audio
+      this.stopSpeaking();
+
       const response = await fetch(soundUrl);
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
@@ -347,6 +361,17 @@ class AudioManager {
   async speakText(text: string, settings: VoiceSettings, onEnd?: () => void) {
     const audioStore = useAudioStore.getState();
     if (audioStore.isMuted) return;
+
+    // If the same voice is already speaking, don't add to queue
+    if (this.currentVoice === settings.voiceUri) {
+      return;
+    }
+
+    // Clear existing queue if voice is different
+    if (this.currentVoice && this.currentVoice !== settings.voiceUri) {
+      this.audioQueue = [];
+      this.stopSpeaking();
+    }
 
     // Add to queue
     this.audioQueue.push({ text, settings, onEnd });
@@ -367,6 +392,17 @@ class AudioManager {
       this.currentAudio.currentTime = 0;
       this.currentAudio = null;
     }
+
+    // Reset current voice
+    this.currentVoice = '';
+  }
+
+  setVoice(voice: string) {
+    // If changing voice, stop current speech
+    if (this.currentVoice !== voice) {
+      this.stopSpeaking();
+    }
+    this.currentVoice = voice;
   }
 
   setRate(rate: number) {
@@ -378,8 +414,6 @@ class AudioManager {
 
   setPitch(pitch: number) {
     this.currentPitch = pitch;
-    // Note: HTML5 Audio doesn't support pitch directly
-    // The pitch will be applied when generating speech through the TTS service
   }
 
   setVolume(volume: number) {

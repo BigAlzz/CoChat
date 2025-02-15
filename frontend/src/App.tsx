@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select, Group, Tooltip, Title, Loader, rem, NumberInput, Modal as MantineModal, Stack } from '@mantine/core'
-import { IconSettings, IconPlus, IconVolume, IconVolumeOff, IconMicrophone, IconFileAnalytics, IconArrowsShuffle, IconArrowsDiagonal2, IconRepeat, IconTrash, IconX } from '@tabler/icons-react'
+import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select, Group, Tooltip, Title, Loader, rem, NumberInput, Modal as MantineModal, Stack, Paper, ScrollArea, Alert, Menu, Badge, Tabs, Menu as ContextMenu } from '@mantine/core'
+import { IconSettings, IconPlus, IconVolume, IconVolumeOff, IconMicrophone, IconFileAnalytics, IconArrowsShuffle, IconArrowsDiagonal2, IconRepeat, IconTrash, IconX, IconHistory, IconDownload, IconFileText, IconFileTypePdf, IconJson } from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
 import ChatPanel from './components/ChatPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -47,7 +48,14 @@ const theme = createTheme({
   white: '#E0E0E0',
 });
 
-type ChatMode = 'individual' | 'sequential' | 'parallel' | 'iteration';
+type ChatMode = 'individual' | 'sequential' | 'parallel' | 'cyclic';
+
+interface ChatMessage {
+  role: string;
+  content: string;
+  assistantName?: string;
+  timestamp?: string;
+}
 
 interface ChatPanelConfig {
   id: string;
@@ -58,6 +66,16 @@ interface ChatPanelConfig {
     w: number;
     h: number;
   };
+}
+
+interface SavedChat {
+  id: string;
+  title: string;
+  timestamp: string;
+  messages: ChatMessage[];
+  mode: ChatMode;
+  panels: ChatPanelConfig[];
+  firstQuestion: string;
 }
 
 const MAX_PANELS = 6;
@@ -82,11 +100,11 @@ const ModeAnimation = ({ mode, isActive }: { mode: string; isActive: boolean }) 
             <Text size="sm" c="#39ff14">Parallel Mode Active</Text>
           </Group>
         );
-      case 'iteration':
+      case 'cyclic':
         return (
           <Group gap="xs" align="center">
             <IconRepeat size={20} color="#39ff14" className="pulse-animation" />
-            <Text size="sm" c="#39ff14">Iteration Mode Active</Text>
+            <Text size="sm" c="#39ff14">Cyclic Mode Active</Text>
           </Group>
         );
       default:
@@ -136,11 +154,29 @@ function App() {
   const [showIterationConfig, setShowIterationConfig] = useState(false);
   const [maxCycles, setMaxCycles] = useState(3);
   const [completedPanels, setCompletedPanels] = useState(0);
+  const [lastSelectedModel, setLastSelectedModel] = useState<{
+    modelId: string;
+    role: string;
+    posture: string;
+  } | null>(null);
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [showChatHistory, setShowChatHistory] = useState(false);
+  const [selectedHistoryChat, setSelectedHistoryChat] = useState<SavedChat | null>(null);
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
     
     const newPanelNumber = chatPanels.length + 1;
+    const lastPanel = chatPanels[chatPanels.length - 1];
+    
+    // Clone voice settings from the last panel if it exists
+    if (lastPanel) {
+      const lastPanelId = lastPanel.id;
+      const newPanelId = newPanelNumber.toString();
+      useAudioStore.getState().cloneSettings(lastPanelId, newPanelId);
+    }
+    
     setChatPanels([
       ...chatPanels,
       { id: newPanelNumber.toString(), title: `Panel ${newPanelNumber}`, layout: { x: 0, y: 0, w: 1, h: 1 } }
@@ -186,7 +222,7 @@ function App() {
       chatMode === 'individual' ||
       (chatMode === 'sequential' && isLastPanel) ||
       (chatMode === 'parallel' && panelIndex === chatPanels.length - 1) ||
-      (chatMode === 'iteration' && isLastPanel && currentCycle === maxCycles - 1)
+      (chatMode === 'cyclic' && isLastPanel && currentCycle === maxCycles - 1)
     );
 
     if (shouldPlaySound) {
@@ -196,32 +232,59 @@ function App() {
       });
     }
 
-    // Handle iteration mode cycle counting
-    if (chatMode === 'iteration' && isLastPanel) {
-      if (currentCycle < maxCycles - 1) {
-        setCurrentCycle(prev => prev + 1);
-      }
-    }
+    // Handle mode-specific completion logic
+    switch (chatMode) {
+      case 'sequential':
+        // Check if all panels have been used
+        const allPanelsUsed = Array.from(document.querySelectorAll('[data-panel-index]'))
+          .every(panel => panel.hasAttribute('data-sequential-used'));
+        if (allPanelsUsed) {
+          setIsModeActive(false);
+          // Clear sequential-used markers when all panels are done
+          document.querySelectorAll('[data-sequential-used]').forEach(panel => {
+            panel.removeAttribute('data-sequential-used');
+          });
+        }
+        break;
 
-    // Update completed panels count for parallel mode
-    if (chatMode === 'parallel') {
-      setCompletedPanels(prev => {
-        const newCount = prev + 1;
-        return newCount;
-      });
+      case 'parallel':
+        setCompletedPanels(prev => {
+          const newCount = prev + 1;
+          if (newCount === chatPanels.length) {
+            setIsModeActive(false);
+          }
+          return newCount;
+        });
+        break;
+
+      case 'cyclic':
+        if (isLastPanel) {
+          if (currentCycle < maxCycles - 1) {
+            setCurrentCycle(prev => prev + 1);
+            setCurrentIterationPanel(0);
+          } else {
+            setIsModeActive(false);
+          }
+        }
+        break;
     }
   };
 
   const handleModeChange = (value: string | null) => {
-    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'iteration')) {
+    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'cyclic')) {
       // Clear any existing state from previous mode
       setCurrentCycle(0);
       setCurrentIterationPanel(0);
       setIsModeActive(false);
       setCompletedPanels(0);
       
-      // Show iteration config modal if iteration mode selected
-      if (value === 'iteration') {
+      // Remove any sequential-used markers
+      document.querySelectorAll('[data-sequential-used]').forEach(panel => {
+        panel.removeAttribute('data-sequential-used');
+      });
+      
+      // Show iteration config modal if cyclic mode selected
+      if (value === 'cyclic') {
         setShowIterationConfig(true);
       }
       
@@ -229,35 +292,90 @@ function App() {
       setChatMode(value as ChatMode);
       
       // Show a notification about mode change
-      const notification = document.createElement('div');
-      notification.style.position = 'fixed';
-      notification.style.bottom = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#39ff14';
-      notification.style.color = 'black';
-      notification.style.padding = '10px 20px';
-      notification.style.borderRadius = '5px';
-      notification.style.zIndex = '1000';
-      notification.style.boxShadow = '0 0 10px rgba(57, 255, 20, 0.3)';
-      notification.textContent = `Switched to ${value} mode${value === 'iteration' ? ` (${maxCycles} cycles)` : ''}`;
+      const modeDescriptions = {
+        individual: 'Individual panel mode',
+        sequential: 'Sequential mode - each panel responds once',
+        parallel: 'Parallel mode - all panels respond simultaneously',
+        cyclic: `Cyclic mode - ${maxCycles} rounds through all panels`
+      };
       
-      document.body.appendChild(notification);
-      setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transition = 'opacity 0.5s ease-out';
-        setTimeout(() => document.body.removeChild(notification), 500);
-      }, 2000);
+      notifications.show({
+        title: 'Mode Changed',
+        message: modeDescriptions[value as ChatMode],
+        color: 'teal'
+      });
     }
   };
 
   const handleSequentialMessage = (message: string) => {
-    // Handle sequential message logic
-    console.log('Sequential message:', message);
+    // Find the next panel's index that hasn't been used yet
+    const nextPanelIndex = chatPanels.findIndex((panel, index) => {
+      const panelElement = document.querySelector(`[data-panel-index="${index}"]`);
+      return panelElement?.getAttribute('data-panel-state') === 'ready' && 
+             !panelElement?.hasAttribute('data-sequential-used');
+    });
+
+    if (nextPanelIndex !== -1) {
+      // Create and dispatch the sequential message event
+      const event = new CustomEvent('sequential-message', {
+        detail: {
+          message,
+          role: lastSelectedModel?.role,
+          posture: lastSelectedModel?.posture
+        }
+      });
+
+      const nextPanel = document.querySelector(`[data-panel-index="${nextPanelIndex}"]`);
+      if (nextPanel) {
+        // Mark this panel as used in the sequential flow
+        nextPanel.setAttribute('data-sequential-used', 'true');
+        nextPanel.dispatchEvent(event);
+      }
+    }
   };
 
   const handleParallelMessage = (message: string) => {
-    // Handle parallel message logic
-    console.log('Parallel message:', message);
+    // Send the message to all panels except the source panel
+    chatPanels.forEach((_, index) => {
+      const panelElement = document.querySelector(`[data-panel-index="${index}"]`);
+      if (panelElement && panelElement.getAttribute('data-panel-state') === 'ready') {
+        const event = new CustomEvent('parallel-message', {
+          detail: {
+            message,
+            role: lastSelectedModel?.role,
+            posture: lastSelectedModel?.posture
+          }
+        });
+        panelElement.dispatchEvent(event);
+      }
+    });
+  };
+
+  const handleIterationMessage = (message: string) => {
+    // Find the next panel in the cycle
+    const nextPanelIndex = (currentIterationPanel + 1) % chatPanels.length;
+    
+    // Create and dispatch the sequential message event
+    const event = new CustomEvent('sequential-message', {
+      detail: {
+        message,
+        role: lastSelectedModel?.role,
+        posture: lastSelectedModel?.posture
+      }
+    });
+
+    const nextPanel = document.querySelector(`[data-panel-index="${nextPanelIndex}"]`);
+    if (nextPanel) {
+      nextPanel.dispatchEvent(event);
+      setCurrentIterationPanel(nextPanelIndex);
+
+      // If we've completed a cycle
+      if (nextPanelIndex === chatPanels.length - 1) {
+        if (currentCycle < maxCycles - 1) {
+          setCurrentCycle(prev => prev + 1);
+        }
+      }
+    }
   };
 
   const handleRecordMessage = (message: string, role: string, assistantName?: string) => {
@@ -320,6 +438,142 @@ function App() {
     }
   };
 
+  // Load saved chats on mount
+  useEffect(() => {
+    const loadedChats = localStorage.getItem('saved_chats');
+    if (loadedChats) {
+      setSavedChats(JSON.parse(loadedChats));
+    }
+  }, []);
+
+  // Save current chat with first question as title
+  const saveCurrentChat = () => {
+    if (conversationHistory.length === 0) return;
+
+    // Find the first user message to use as the chat title
+    const firstUserMessage = conversationHistory.find(msg => msg.role === 'user');
+    if (!firstUserMessage) return;
+
+    // Create a shortened version of the first question for the title
+    const shortTitle = firstUserMessage.content.length > 50 
+      ? firstUserMessage.content.substring(0, 50) + '...'
+      : firstUserMessage.content;
+
+    const newChat: SavedChat = {
+      id: Date.now().toString(),
+      title: shortTitle,
+      timestamp: new Date().toISOString(),
+      messages: conversationHistory,
+      mode: chatMode,
+      panels: chatPanels,
+      firstQuestion: firstUserMessage.content
+    };
+
+    const updatedChats = [...savedChats, newChat];
+    setSavedChats(updatedChats);
+    localStorage.setItem('saved_chats', JSON.stringify(updatedChats));
+  };
+
+  // Load a saved chat
+  const loadSavedChat = (chatId: string) => {
+    const chat = savedChats.find(c => c.id === chatId);
+    if (chat) {
+      setChatMode(chat.mode);
+      setChatPanels(chat.panels);
+      setConversationHistory(chat.messages);
+      setSelectedChatId(chatId);
+      setShowChatHistory(false); // Close the modal after loading
+    }
+  };
+
+  // Delete a saved chat
+  const deleteSavedChat = (chatId: string) => {
+    const updatedChats = savedChats.filter(chat => chat.id !== chatId);
+    setSavedChats(updatedChats);
+    localStorage.setItem('saved_chats', JSON.stringify(updatedChats));
+    if (selectedHistoryChat?.id === chatId) {
+      setSelectedHistoryChat(null);
+    }
+  };
+
+  // Format timestamp
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString();
+  };
+
+  // Auto-save chat when messages change
+  useEffect(() => {
+    if (conversationHistory.length > 0) {
+      saveCurrentChat();
+    }
+  }, [conversationHistory]);
+
+  // Add export functions
+  const exportChatAsPDF = async (chat: SavedChat) => {
+    try {
+      // Convert chat messages to formatted text
+      const content = chat.messages.map(msg => 
+        `${msg.role === 'user' ? 'You' : msg.assistantName || 'Assistant'}: ${msg.content}`
+      ).join('\n\n');
+
+      const response = await fetch('/api/v1/export/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `chat_${chat.id}_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+    }
+  };
+
+  const exportChatAsText = (chat: SavedChat) => {
+    try {
+      const content = chat.messages.map(msg => 
+        `${msg.role === 'user' ? 'You' : msg.assistantName || 'Assistant'} (${new Date(msg.timestamp || '').toLocaleString()}):\n${msg.content}`
+      ).join('\n\n');
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `chat_${chat.id}_${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting text:', error);
+    }
+  };
+
+  const exportChatAsJSON = (chat: SavedChat) => {
+    try {
+      const blob = new Blob([JSON.stringify(chat, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `chat_${chat.id}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting JSON:', error);
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <MantineProvider 
@@ -335,7 +589,7 @@ function App() {
               <Title order={3}>CoChat</Title>
               <Group align="center" gap="lg">
                 <ModeAnimation mode={chatMode} isActive={isModeActive} />
-                {chatMode === 'iteration' && (
+                {chatMode === 'cyclic' && (
                   <Text size="sm" c="dimmed">
                     Cycle {currentCycle + 1} of {maxCycles}
                   </Text>
@@ -352,11 +606,27 @@ function App() {
                     </ActionIcon>
                   </Tooltip>
                   <Select
+                    placeholder="Previous Chats"
+                    data={savedChats.map(chat => ({
+                      value: chat.id,
+                      label: chat.title
+                    }))}
+                    value={selectedChatId}
+                    onChange={(value) => value && loadSavedChat(value)}
+                    clearable
+                    style={{ width: '200px' }}
+                  />
+                  <Tooltip label="Chat History">
+                    <ActionIcon variant="light" onClick={() => setShowChatHistory(true)}>
+                      <IconHistory size={20} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Select
                     data={[
                       { value: 'individual', label: 'Individual' },
-                      { value: 'sequential', label: 'Sequential' },
-                      { value: 'parallel', label: 'Parallel' },
-                      { value: 'iteration', label: 'Iteration' }
+                      { value: 'sequential', label: 'Sequential (Once through all panels)' },
+                      { value: 'parallel', label: 'Parallel (All panels at once)' },
+                      { value: 'cyclic', label: 'Cyclic (Multiple rounds)' }
                     ]}
                     value={chatMode}
                     onChange={handleModeChange}
@@ -397,6 +667,10 @@ function App() {
                     onModelResponse={index === 0 ? handleFirstModelResponse : undefined}
                     onPanelComplete={handlePanelComplete}
                     maxCycles={maxCycles}
+                    initialModel={lastSelectedModel}
+                    onModelSelect={(modelId, role, posture) => {
+                      setLastSelectedModel({ modelId, role, posture });
+                    }}
                   />
                 </Box>
               ))}
@@ -443,6 +717,124 @@ function App() {
             <Button onClick={() => setShowIterationConfig(false)}>
               Start Iteration
             </Button>
+          </Stack>
+        </MantineModal>
+
+        {/* Chat History Modal */}
+        <MantineModal
+          opened={showChatHistory}
+          onClose={() => setShowChatHistory(false)}
+          title={<Title order={3}>Chat History</Title>}
+          size="xl"
+        >
+          <Stack gap="md">
+            <Group gap="md" grow>
+              {/* Chat List */}
+              <Box style={{ flex: 1, maxHeight: '70vh', overflowY: 'auto' }}>
+                <Stack gap="xs">
+                  {savedChats.map(chat => (
+                    <ContextMenu key={chat.id} position="bottom-start" offset={4}>
+                      <ContextMenu.Target>
+                        <Paper
+                          p="md"
+                          withBorder
+                          style={{ 
+                            cursor: 'pointer',
+                            backgroundColor: selectedHistoryChat?.id === chat.id ? 'var(--mantine-color-dark-6)' : undefined
+                          }}
+                          onClick={() => setSelectedHistoryChat(chat)}
+                        >
+                          <Group justify="space-between" mb="xs">
+                            <Text size="sm" fw={500}>{chat.title}</Text>
+                            <Badge>{chat.mode}</Badge>
+                          </Group>
+                          <Text size="xs" c="dimmed">{formatTimestamp(chat.timestamp)}</Text>
+                        </Paper>
+                      </ContextMenu.Target>
+
+                      <ContextMenu.Dropdown>
+                        <ContextMenu.Label>Chat Options</ContextMenu.Label>
+                        <ContextMenu.Item
+                          color="red"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => deleteSavedChat(chat.id)}
+                        >
+                          Delete Chat
+                        </ContextMenu.Item>
+                        <ContextMenu.Divider />
+                        <ContextMenu.Label>Export As</ContextMenu.Label>
+                        <ContextMenu.Item
+                          leftSection={<IconFileTypePdf size={14} />}
+                          onClick={() => exportChatAsPDF(chat)}
+                        >
+                          PDF
+                        </ContextMenu.Item>
+                        <ContextMenu.Item
+                          leftSection={<IconFileText size={14} />}
+                          onClick={() => exportChatAsText(chat)}
+                        >
+                          Text
+                        </ContextMenu.Item>
+                        <ContextMenu.Item
+                          leftSection={<IconJson size={14} />}
+                          onClick={() => exportChatAsJSON(chat)}
+                        >
+                          JSON
+                        </ContextMenu.Item>
+                      </ContextMenu.Dropdown>
+                    </ContextMenu>
+                  ))}
+                </Stack>
+              </Box>
+
+              {/* Chat Details */}
+              {selectedHistoryChat && (
+                <Box style={{ flex: 1.5, maxHeight: '70vh' }}>
+                  <Paper p="md" withBorder>
+                    <Stack gap="md">
+                      <Group justify="space-between">
+                        <Title order={4}>{selectedHistoryChat.title}</Title>
+                        <Button 
+                          variant="light"
+                          onClick={() => loadSavedChat(selectedHistoryChat.id)}
+                        >
+                          Load Chat
+                        </Button>
+                      </Group>
+                      <Group>
+                        <Badge>{selectedHistoryChat.mode} mode</Badge>
+                        <Text size="sm">{formatTimestamp(selectedHistoryChat.timestamp)}</Text>
+                      </Group>
+                      <ScrollArea h={400}>
+                        <Stack gap="md">
+                          {selectedHistoryChat.messages.map((message, index) => (
+                            <Paper
+                              key={index}
+                              p="md"
+                              style={{
+                                backgroundColor: message.role === 'user' 
+                                  ? 'var(--mantine-color-dark-5)'
+                                  : 'var(--mantine-color-dark-7)'
+                              }}
+                            >
+                              <Group justify="space-between" mb="xs">
+                                <Text size="sm" fw={500}>
+                                  {message.role === 'user' ? 'You' : message.assistantName || 'Assistant'}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                  {message.timestamp && formatTimestamp(message.timestamp)}
+                                </Text>
+                              </Group>
+                              <Text size="sm">{message.content}</Text>
+                            </Paper>
+                          ))}
+                        </Stack>
+                      </ScrollArea>
+                    </Stack>
+                  </Paper>
+                </Box>
+              )}
+            </Group>
           </Stack>
         </MantineModal>
 

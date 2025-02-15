@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Paper, Title, Box, Stack, ScrollArea, Button, Text, Group, ActionIcon, Alert, Loader, Menu, Tooltip, Select, Badge } from '@mantine/core';
 import { IconPlus, IconX, IconAlertCircle, IconBrain, IconBookmark, IconSearch, IconVolume, IconVolumeOff, IconTrash, IconPlayerPlay, IconPlayerPause, IconHeadphones, IconPlayerStop } from '@tabler/icons-react';
 import Message from './Message';
@@ -30,7 +30,7 @@ interface LMStudioMessage {
 interface ChatPanelProps {
   title: string;
   isAutonomous: boolean;
-  mode: 'individual' | 'sequential' | 'parallel' | 'iteration';
+  mode: 'individual' | 'sequential' | 'parallel' | 'cyclic';
   onRemove?: () => void;
   panelIndex?: number;
   totalPanels?: number;
@@ -42,6 +42,12 @@ interface ChatPanelProps {
   onModelResponse?: (isStarting: boolean) => void;
   onPanelComplete?: (panelIndex: number) => void;
   maxCycles?: number;
+  initialModel?: {
+    modelId: string;
+    role: string;
+    posture: string;
+  } | null;
+  onModelSelect?: (modelId: string, role: string, posture: string) => void;
 }
 
 interface Memory {
@@ -65,26 +71,29 @@ const ChatPanel = ({
   onModelResponse,
   onPanelComplete,
   maxCycles = 3,
+  initialModel,
+  onModelSelect,
 }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-3.5-turbo');
-  const [selectedRole, setSelectedRole] = useState<string>('researcher');
-  const [selectedPosture, setSelectedPosture] = useState<string>('professional');
+  const [selectedModel, setSelectedModel] = useState<string>(initialModel?.modelId || '');
+  const [selectedRole, setSelectedRole] = useState<string>(initialModel?.role || 'researcher');
+  const [selectedPosture, setSelectedPosture] = useState<string>(initialModel?.posture || 'professional');
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>('Thinking...');
   const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isStopRequested, setIsStopRequested] = useState(false);
-  const { isMuted, toggleMute } = useAudioStore();
+  const { isMuted, toggleMute, speak, stopSpeaking, autoReadEnabled, toggleAutoRead } = useAudioStore();
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [timerInterval, setTimerInterval] = useState<number | null>(null);
   const [selectedVoice, setSelectedVoice] = useState<string>('Microsoft Hazel Desktop');
   const [availableVoices, setAvailableVoices] = useState<Array<{value: string, label: string}>>([]);
   const [isReading, setIsReading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
+  const lastResponseRef = useRef<string>('');
   const [audioQueue, setAudioQueue] = useState<HTMLAudioElement[]>([]);
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
@@ -240,16 +249,20 @@ const ChatPanel = ({
   // Update voice selection handler
   const handleVoiceChange = (value: string | null) => {
     if (value) {
+      // Stop any current speech before changing voice
+      audioManager.stopSpeaking();
+      
       // Get current settings and update voice
-      const currentSettings = useAudioStore.getState().getVoiceSettings(selectedModel || 'default');
+      const currentSettings = useAudioStore.getState().getVoiceSettings(panelIndex.toString() || 'default');
       const updatedSettings = {
         ...currentSettings,
         voiceUri: value
       };
       
       // Save settings immediately
-      useAudioStore.getState().updateVoiceSettings(selectedModel || 'default', updatedSettings);
+      useAudioStore.getState().updateVoiceSettings(panelIndex.toString() || 'default', updatedSettings);
       setSelectedVoice(value);
+      audioManager.setVoice(value);
     }
   };
 
@@ -261,8 +274,8 @@ const ChatPanel = ({
       setSelectedPosture(posture);
       setError(null);
       
-      // Get or clone voice settings for the model
-      const settings = useAudioStore.getState().getVoiceSettings(modelId);
+      // Get voice settings for this panel
+      const settings = useAudioStore.getState().getVoiceSettings(panelIndex.toString() || 'default');
       setSelectedVoice(settings.voiceUri);
       
       const conversation = await api.createConversation(title, isAutonomous);
@@ -275,6 +288,9 @@ const ChatPanel = ({
         posture: posture,
         system_prompt: getSystemPrompt(role, posture)
       });
+
+      // Notify parent about model selection
+      onModelSelect?.(modelId, role, posture);
     } catch (error) {
       console.error('Error setting model:', error);
       setError(error instanceof Error ? error.message : 'Failed to set model');
@@ -284,10 +300,10 @@ const ChatPanel = ({
 
   // Add effect to initialize voice settings
   useEffect(() => {
-    // Load saved voice settings for the current model
-    const settings = useAudioStore.getState().getVoiceSettings(selectedModel || 'default');
+    // Load saved voice settings for this panel's ID
+    const settings = useAudioStore.getState().getVoiceSettings(panelIndex.toString() || 'default');
     setSelectedVoice(settings.voiceUri);
-  }, []);
+  }, [panelIndex]);
 
   // Add stop handler
   const handleStop = () => {
@@ -332,6 +348,7 @@ const ChatPanel = ({
     setIsLoading(true);
     setError(null);
     setStreamingContent('');
+    let accumulatedResponse = '';
 
     try {
       const newMessage: ChatMessage = {
@@ -358,7 +375,6 @@ const ChatPanel = ({
       };
       setMessages(prev => [...prev, thinkingMessage]);
 
-      let accumulatedResponse = '';
       const response = await fetch('http://192.168.50.89:1234/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -382,6 +398,44 @@ const ChatPanel = ({
       if (!reader) {
         throw new Error('No response reader available');
       }
+
+      let currentSentence = '';
+      let readTimeout: NodeJS.Timeout | null = null;
+
+      const readSentence = (sentence: string) => {
+        if (autoReadEnabled && !isMuted && sentence.trim()) {
+          try {
+            fetch('http://localhost:8000/api/v1/tts/speak', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                text: sentence.trim(),
+                voice: selectedVoice,
+                service: 'windows'
+              })
+            })
+            .then(response => response.blob())
+            .then(audioBlob => {
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const audio = new Audio(audioUrl);
+              audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+              };
+              setAudioQueue(prev => [...prev, audio]);
+              if (!isProcessingAudio) {
+                void processAudioQueue();
+              }
+            })
+            .catch(error => {
+              console.error('Error in TTS:', error);
+            });
+          } catch (error) {
+            console.error('Error in TTS:', error);
+          }
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -412,40 +466,29 @@ const ChatPanel = ({
                   return newMessages;
                 });
 
-                // If TTS is enabled and not muted, speak the new content
-                if (isReading && !isMuted && content.trim()) {
-                  try {
-                    const response = await fetch('http://localhost:8000/api/v1/tts/speak', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        text: content.trim(),
-                        voice: selectedVoice,
-                        service: 'windows'
-                      })
-                    });
+                // Accumulate content into current sentence
+                currentSentence += content;
 
-                    if (!response.ok) {
-                      throw new Error('Failed to generate speech');
-                    }
+                // Clear any existing timeout
+                if (readTimeout) {
+                  clearTimeout(readTimeout);
+                }
 
-                    const audioBlob = await response.blob();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const audio = new Audio(audioUrl);
-                    
-                    // Add cleanup handler
-                    audio.onended = () => {
-                      URL.revokeObjectURL(audioUrl);
-                    };
-
-                    // Add to queue instead of playing immediately
-                    setAudioQueue(prev => [...prev, audio]);
-                    processAudioQueue();
-                  } catch (error) {
-                    console.error('Error in TTS:', error);
+                // Set new timeout to read the sentence
+                readTimeout = setTimeout(() => {
+                  if (currentSentence.trim()) {
+                    readSentence(currentSentence);
+                    currentSentence = '';
                   }
+                }, 500); // Wait for 500ms of no new content before reading
+
+                // Also check for sentence endings
+                if (/[.!?]\s*$/.test(currentSentence)) {
+                  if (readTimeout) {
+                    clearTimeout(readTimeout);
+                  }
+                  readSentence(currentSentence);
+                  currentSentence = '';
                 }
               }
             } catch (e) {
@@ -453,6 +496,11 @@ const ChatPanel = ({
             }
           }
         }
+      }
+
+      // Read any remaining content
+      if (currentSentence.trim()) {
+        readSentence(currentSentence);
       }
 
       // Record the assistant's message if needed
@@ -513,13 +561,17 @@ const ChatPanel = ({
   const handleReadToggle = () => {
     if (isReading) {
       setIsReading(false);
-      // Clear the audio queue when stopping
+      // Stop all audio and clear the queue
+      audioManager.stopSpeaking();
       setAudioQueue([]);
       setIsProcessingAudio(false);
     } else {
       setIsReading(true);
       // Start reading from the current streaming content
       if (streamingContent) {
+        // Stop any existing speech first
+        audioManager.stopSpeaking();
+        
         fetch('http://localhost:8000/api/v1/tts/speak', {
           method: 'POST',
           headers: {
@@ -537,8 +589,9 @@ const ChatPanel = ({
           const audio = new Audio(audioUrl);
           audio.onended = () => {
             URL.revokeObjectURL(audioUrl);
+            setIsReading(false);
           };
-          setAudioQueue(prev => [...prev, audio]);
+          setAudioQueue([audio]);
           processAudioQueue();
         })
         .catch(error => {
@@ -552,14 +605,136 @@ const ChatPanel = ({
   // Clean up audio resources when component unmounts or reading stops
   useEffect(() => {
     if (!isReading) {
+      audioManager.stopSpeaking();
       setAudioQueue([]);
       setIsProcessingAudio(false);
     }
     return () => {
+      audioManager.stopSpeaking();
       setAudioQueue([]);
       setIsProcessingAudio(false);
     };
   }, [isReading]);
+
+  const handleFileUpload = (file: File) => {
+    // File has already been read and added to the message input
+    // You can add additional handling here if needed, such as:
+    // - Storing the file metadata
+    // - Processing the file in a different way
+    // - Sending the file to a server
+    console.log('File uploaded:', file.name);
+  };
+
+  // Function to handle reading the response
+  const readResponse = useCallback((response: string) => {
+    if (!response) return;
+    setIsReading(true);
+    speak(response, {
+      onEnd: () => {
+        setIsReading(false);
+        setHasUnreadResponse(false);
+        onPanelComplete?.(panelIndex);
+      },
+      onError: () => {
+        setIsReading(false);
+        setHasUnreadResponse(false);
+      }
+    });
+  }, [speak, onPanelComplete, panelIndex]);
+
+  // Handle auto-reading when new responses arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant' && lastMessage.content !== lastResponseRef.current) {
+        lastResponseRef.current = lastMessage.content;
+        setHasUnreadResponse(true);
+        
+        if (autoReadEnabled) {
+          readResponse(lastMessage.content);
+        }
+      }
+    }
+  }, [messages, autoReadEnabled, readResponse]);
+
+  // Stop reading when auto-read is disabled
+  useEffect(() => {
+    if (!autoReadEnabled && isReading) {
+      stopSpeaking();
+      setIsReading(false);
+    }
+  }, [autoReadEnabled, isReading, stopSpeaking]);
+
+  const handleAssistantResponse = useCallback(async (response: string) => {
+    // Mark panel as used in sequential mode
+    if (mode === 'sequential') {
+      const panel = document.querySelector(`[data-panel-index="${panelIndex}"]`);
+      if (panel) {
+        panel.setAttribute('data-sequential-used', 'true');
+      }
+    }
+
+    // Handle TTS based on mode
+    if (autoReadEnabled) {
+      // In parallel mode, only one voice can speak at a time
+      if (mode === 'parallel') {
+        // Wait for any existing speech to finish
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+      }
+
+      // Don't read if this panel was already used in sequential mode
+      if (mode === 'sequential') {
+        const panel = document.querySelector(`[data-panel-index="${panelIndex}"]`);
+        if (panel?.hasAttribute('data-sequential-used')) {
+          return;
+        }
+      }
+
+      // Read the response
+      const sentences = response.match(/[^.!?]+[.!?]+/g) || [response];
+      for (const sentence of sentences) {
+        await new Promise<void>((resolve) => {
+          const utterance = new SpeechSynthesisUtterance(sentence.trim());
+          utterance.onend = () => resolve();
+          utterance.onerror = () => {
+            console.error('TTS error occurred');
+            resolve();
+          };
+          window.speechSynthesis.speak(utterance);
+        });
+      }
+    }
+  }, [panelIndex, mode, autoReadEnabled]);
+
+  // Update mode badge
+  const getModeBadge = () => {
+    switch (mode) {
+      case 'individual':
+        return null;
+      case 'sequential':
+        return (
+          <Badge color="blue" variant="light">
+            Sequential
+          </Badge>
+        );
+      case 'parallel':
+        return (
+          <Badge color="green" variant="light">
+            Parallel
+          </Badge>
+        );
+      case 'cyclic':
+        return (
+          <Badge color="purple" variant="light">
+            Cyclic
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <Paper 
@@ -618,15 +793,16 @@ const ChatPanel = ({
                 style={{ width: '200px' }}
                 size="sm"
               />
-              <ActionIcon
-                variant={isReading ? "filled" : "subtle"}
-                color={isReading ? "red" : "blue"}
-                onClick={handleReadToggle}
-                disabled={isMuted || (!streamingContent && !isLoading)}
-                title={isReading ? "Stop Reading" : "Start Reading"}
-              >
-                {isReading ? <IconPlayerStop size={16} /> : <IconHeadphones size={16} />}
-              </ActionIcon>
+              <Tooltip label={autoReadEnabled ? "Stop Auto-Reading" : "Start Auto-Reading"}>
+                <ActionIcon
+                  variant={autoReadEnabled ? "filled" : "light"}
+                  color={autoReadEnabled ? "teal" : "gray"}
+                  onClick={toggleAutoRead}
+                  loading={isReading}
+                >
+                  <IconVolume size={20} />
+                </ActionIcon>
+              </Tooltip>
               {(isLoading || isStreaming) && (
                 <Button 
                   variant="light"
@@ -746,6 +922,7 @@ const ChatPanel = ({
 
         <MessageInput
           onSend={handleSendMessage}
+          onFileUpload={handleFileUpload}
           disabled={isLoading || !conversationId || !selectedModel}
           style={{ flexShrink: 0 }}
         />
