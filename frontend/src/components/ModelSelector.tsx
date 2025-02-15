@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Select, Button, Group, Text, Tooltip, Badge, Alert, Stack } from '@mantine/core';
+import { Select, Button, Group, Text, Tooltip, Badge, Alert, Stack, Box, ComboboxItem } from '@mantine/core';
 import { IconRefresh, IconAlertCircle } from '@tabler/icons-react';
 import * as api from '../services/api';
-import { ASSISTANT_ROLES, ASSISTANT_POSTURES } from '../config/assistantConfig';
+import { ASSISTANT_ROLES, ASSISTANT_POSTURES, DEFAULT_ROLE, DEFAULT_POSTURE } from '../config/assistantConfig';
 
 interface Model {
   id: string;
@@ -22,8 +22,8 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>('analyst');
-  const [selectedPosture, setSelectedPosture] = useState<string>('professional');
+  const [selectedRole, setSelectedRole] = useState(DEFAULT_ROLE);
+  const [selectedPosture, setSelectedPosture] = useState(DEFAULT_POSTURE);
 
   const getModelSize = (modelId: string): string => {
     const sizeMatch = modelId.match(/(\d+)b/i);
@@ -67,13 +67,13 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
     return () => clearInterval(interval);
   }, []);
 
-  const handleModelChange = (value: string | null) => {
+  const handleModelSelect = (value: string | null) => {
     if (value) {
       onModelSelect(value, selectedRole, selectedPosture);
     }
   };
 
-  const handleRoleChange = (value: string | null) => {
+  const handleRoleSelect = (value: string | null) => {
     if (value) {
       setSelectedRole(value);
       if (selectedModel) {
@@ -82,7 +82,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
     }
   };
 
-  const handlePostureChange = (value: string | null) => {
+  const handlePostureSelect = (value: string | null) => {
     if (value) {
       setSelectedPosture(value);
       if (selectedModel) {
@@ -92,7 +92,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
   };
 
   return (
-    <div className="model-selector" style={style}>
+    <Box style={style}>
       <Stack gap="md">
         <Group gap="xs" align="flex-start">
           <Select
@@ -130,7 +130,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
               }
             ].filter(group => group.items.length > 0) : []}
             value={selectedModel || null}
-            onChange={handleModelChange}
+            onChange={handleModelSelect}
             disabled={disabled || loading}
             searchable
             clearable
@@ -182,7 +182,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                 description: role.description
               }))}
               value={selectedRole}
-              onChange={handleRoleChange}
+              onChange={handleRoleSelect}
               disabled={disabled || loading}
               styles={{
                 input: {
@@ -215,7 +215,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
                 description: posture.description
               }))}
               value={selectedPosture}
-              onChange={handlePostureChange}
+              onChange={handlePostureSelect}
               disabled={disabled || loading}
               styles={{
                 input: {
@@ -285,7 +285,7 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
           </Alert>
         )}
       </Stack>
-    </div>
+    </Box>
   );
 };
 

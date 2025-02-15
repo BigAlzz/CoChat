@@ -1,7 +1,12 @@
 import axios from 'axios';
 import { getSystemPrompt } from '../config/assistantConfig';
+import { API_URL } from '../config/config';
 
+// Fixed LM Studio URL
 const LMSTUDIO_API_URL = 'http://192.168.50.89:1234/v1';
+
+// API base URLs
+const API_BASE_URL = `${API_URL}/api/v1`;
 
 export interface Assistant {
   name: string;
@@ -43,6 +48,12 @@ interface StreamChunk {
   assistant_name: string;
 }
 
+export interface Memory {
+  id: string;
+  content: string;
+  metadata?: Record<string, any>;
+}
+
 // Create API instance
 const api = axios.create({
   baseURL: LMSTUDIO_API_URL,
@@ -74,7 +85,8 @@ api.interceptors.response.use(
 // Model management endpoints
 export const getAvailableModels = async (): Promise<LMStudioResponse['data']> => {
   try {
-    const response = await api.get<LMStudioResponse>('/models');
+    console.log('Fetching models from:', `${LMSTUDIO_API_URL}/models`);
+    const response = await axios.get<LMStudioResponse>(`${LMSTUDIO_API_URL}/models`);
     console.log('Models response:', response.data);
     
     if (response.data && response.data.data) {
@@ -122,18 +134,65 @@ export const updateModel = async (model: { id: string; name: string; oldId: stri
   }
 };
 
-// Chat completion endpoint
+// Memory management functions
+export const getMemories = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/memories/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch memories');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching memories:', error);
+    throw error;
+  }
+};
+
+export const createMemory = async (content: string, metadata?: Record<string, any>) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/memories/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content, metadata }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to create memory');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating memory:', error);
+    throw error;
+  }
+};
+
+export const listMemories = async (query?: string): Promise<Memory[]> => {
+  const params = query ? { query } : {};
+  const response = await axios.get(`${API_BASE_URL}/memories/`, { params });
+  return response.data;
+};
+
+export const getMemory = async (id: string): Promise<Memory> => {
+  const response = await axios.get(`${API_BASE_URL}/memories/${id}`);
+  return response.data;
+};
+
+export const deleteMemory = async (id: string): Promise<void> => {
+  await axios.delete(`${API_BASE_URL}/memories/${id}`);
+};
+
+// Modified chat completion endpoint to remove RAG support
 export const sendMessage = async (
   modelId: string,
   content: string,
   role: string,
   posture: string,
-  onChunk?: (chunk: StreamChunk) => void
+  onChunk?: (chunk: StreamChunk) => void,
 ) => {
   const systemPrompt = getSystemPrompt(role, posture);
   
   if (onChunk) {
-    // Use streaming endpoint
     const response = await fetch(
       `${LMSTUDIO_API_URL}/chat/completions`,
       {
@@ -204,9 +263,8 @@ export const sendMessage = async (
       }
     }];
   } else {
-    // Use non-streaming endpoint for backward compatibility
-    const response = await api.post(
-      '/chat/completions',
+    const response = await axios.post(
+      `${LMSTUDIO_API_URL}/chat/completions`,
       {
         messages: [
           { role: 'system', content: systemPrompt },
@@ -220,7 +278,7 @@ export const sendMessage = async (
     );
 
     if (!response.data || !response.data.choices || !response.data.choices[0]) {
-      throw new Error('Invalid response format from LM Studio');
+      throw new Error('Invalid response format');
     }
 
     return [{

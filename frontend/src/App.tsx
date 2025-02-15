@@ -1,16 +1,50 @@
-import { useState } from 'react'
-import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select } from '@mantine/core'
-import { IconSettings, IconPlus } from '@tabler/icons-react'
+import { useState, useEffect } from 'react'
+import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select, Group, Tooltip, Title, Loader, rem, NumberInput, Modal as MantineModal, Stack } from '@mantine/core'
+import { IconSettings, IconPlus, IconVolume, IconVolumeOff, IconMicrophone, IconFileAnalytics, IconArrowsShuffle, IconArrowsDiagonal2, IconRepeat, IconTrash, IconX } from '@tabler/icons-react'
 import ChatPanel from './components/ChatPanel'
-import SettingsPanel from './components/SettingsPanel'
+import { SettingsPanel } from './components/SettingsPanel'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import '@mantine/core/styles.css'
+import SummaryModal from './components/SummaryModal'
+import { useAudioStore } from './utils/audio'
+import RecordedConversations from './components/RecordedConversations'
+import VoiceSettings from './components/VoiceSettings'
 
 const queryClient = new QueryClient()
 
 const theme = createTheme({
-  primaryColor: 'green',
+  primaryColor: 'teal',
+  colors: {
+    dark: [
+      '#C1C2C5',
+      '#A6A7AB',
+      '#909296',
+      '#5C5F66',
+      '#373A40',
+      '#2C2E33',
+      '#25262B',
+      '#1A1B1E',
+      '#141517',
+      '#101113',
+    ],
+    teal: [
+      '#E6FFF9',
+      '#B3FFE6',
+      '#80FFD9',
+      '#4DFFCC',
+      '#1AFFBF',
+      '#00B894',
+      '#00A085',
+      '#008C76',
+      '#007867',
+      '#006458',
+    ],
+  },
+  primaryShade: { light: 6, dark: 5 },
+  defaultRadius: 'md',
+  black: '#1A1B1E',
+  white: '#E0E0E0',
 });
 
 type ChatMode = 'individual' | 'sequential' | 'parallel' | 'iteration';
@@ -18,19 +52,90 @@ type ChatMode = 'individual' | 'sequential' | 'parallel' | 'iteration';
 interface ChatPanelConfig {
   id: string;
   title: string;
+  layout: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
 }
 
 const MAX_PANELS = 6;
 
+// Add ModeAnimation component
+const ModeAnimation = ({ mode, isActive }: { mode: string; isActive: boolean }) => {
+  if (!isActive) return null;
+
+  const getAnimation = () => {
+    switch (mode) {
+      case 'sequential':
+        return (
+          <Group gap="xs" align="center">
+            <IconArrowsShuffle size={20} color="#39ff14" className="pulse-animation" />
+            <Text size="sm" c="#39ff14">Sequential Mode Active</Text>
+          </Group>
+        );
+      case 'parallel':
+        return (
+          <Group gap="xs" align="center">
+            <IconArrowsDiagonal2 size={20} color="#39ff14" className="pulse-animation" />
+            <Text size="sm" c="#39ff14">Parallel Mode Active</Text>
+          </Group>
+        );
+      case 'iteration':
+        return (
+          <Group gap="xs" align="center">
+            <IconRepeat size={20} color="#39ff14" className="pulse-animation" />
+            <Text size="sm" c="#39ff14">Iteration Mode Active</Text>
+          </Group>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Box 
+      style={{ 
+        animation: isActive ? 'fadeInOut 2s infinite' : 'none',
+        padding: '4px 12px',
+        borderRadius: '4px',
+        backgroundColor: 'rgba(57, 255, 20, 0.1)'
+      }}
+    >
+      {getAnimation()}
+    </Box>
+  );
+};
+
 function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [chatPanels, setChatPanels] = useState<ChatPanelConfig[]>([
-    { id: '1', title: 'Panel 1' }
+    { id: '1', title: 'Panel 1', layout: { x: 0, y: 0, w: 1, h: 1 } }
   ]);
   const [chatMode, setChatMode] = useState<ChatMode>('individual');
   const [iterationCycles, setIterationCycles] = useState(1);
   const [currentCycle, setCurrentCycle] = useState(0);
   const [currentIterationPanel, setCurrentIterationPanel] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<Array<{
+    role: string;
+    content: string;
+    assistantName?: string;
+    timestamp?: string;
+  }>>([]);
+  const [recordSequentialConversations, setRecordSequentialConversations] = useState(false);
+  const { isMuted, toggleMute } = useAudioStore();
+  const [showRecordings, setShowRecordings] = useState(false);
+  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [voiceSettingsOpened, setVoiceSettingsOpened] = useState(false);
+  const [isModeActive, setIsModeActive] = useState(false);
+  const [completionSound, setCompletionSound] = useState<string | null>(
+    localStorage.getItem('completionSoundUrl')
+  );
+  const [showIterationConfig, setShowIterationConfig] = useState(false);
+  const [maxCycles, setMaxCycles] = useState(3);
+  const [completedPanels, setCompletedPanels] = useState(0);
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
@@ -38,7 +143,7 @@ function App() {
     const newPanelNumber = chatPanels.length + 1;
     setChatPanels([
       ...chatPanels,
-      { id: newPanelNumber.toString(), title: `Panel ${newPanelNumber}` }
+      { id: newPanelNumber.toString(), title: `Panel ${newPanelNumber}`, layout: { x: 0, y: 0, w: 1, h: 1 } }
     ]);
   };
 
@@ -53,14 +158,75 @@ function App() {
     return 'calc(50vh - 60px)';                         // Half height for 4-6 panels
   };
 
+  // Reset completed panels when mode changes
+  useEffect(() => {
+    setCompletedPanels(0);
+    setCurrentCycle(0);
+  }, [chatMode]);
+
+  // Handle mode animation and completion sound
+  const handleFirstModelResponse = (isStarting: boolean) => {
+    if (chatMode !== 'individual') {
+      setIsModeActive(isStarting);
+    }
+  };
+
+  // Handle panel completion and play sound
+  const handlePanelComplete = (panelIndex: number) => {
+    const isLastPanel = panelIndex === chatPanels.length - 1;
+    
+    // Keep animation active until the last panel completes
+    if (chatMode !== 'individual' && !isLastPanel) {
+      setIsModeActive(true);
+    } else {
+      setIsModeActive(false);
+    }
+
+    const shouldPlaySound = !isMuted && completionSound && (
+      chatMode === 'individual' ||
+      (chatMode === 'sequential' && isLastPanel) ||
+      (chatMode === 'parallel' && panelIndex === chatPanels.length - 1) ||
+      (chatMode === 'iteration' && isLastPanel && currentCycle === maxCycles - 1)
+    );
+
+    if (shouldPlaySound) {
+      const audio = new Audio(completionSound);
+      audio.play().catch(error => {
+        console.error('Error playing completion sound:', error);
+      });
+    }
+
+    // Handle iteration mode cycle counting
+    if (chatMode === 'iteration' && isLastPanel) {
+      if (currentCycle < maxCycles - 1) {
+        setCurrentCycle(prev => prev + 1);
+      }
+    }
+
+    // Update completed panels count for parallel mode
+    if (chatMode === 'parallel') {
+      setCompletedPanels(prev => {
+        const newCount = prev + 1;
+        return newCount;
+      });
+    }
+  };
+
   const handleModeChange = (value: string | null) => {
     if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'iteration')) {
       // Clear any existing state from previous mode
       setCurrentCycle(0);
       setCurrentIterationPanel(0);
+      setIsModeActive(false);
+      setCompletedPanels(0);
+      
+      // Show iteration config modal if iteration mode selected
+      if (value === 'iteration') {
+        setShowIterationConfig(true);
+      }
       
       // Update the mode
-      setChatMode(value);
+      setChatMode(value as ChatMode);
       
       // Show a notification about mode change
       const notification = document.createElement('div');
@@ -73,7 +239,7 @@ function App() {
       notification.style.borderRadius = '5px';
       notification.style.zIndex = '1000';
       notification.style.boxShadow = '0 0 10px rgba(57, 255, 20, 0.3)';
-      notification.textContent = `Switched to ${value} mode`;
+      notification.textContent = `Switched to ${value} mode${value === 'iteration' ? ` (${maxCycles} cycles)` : ''}`;
       
       document.body.appendChild(notification);
       setTimeout(() => {
@@ -84,254 +250,224 @@ function App() {
     }
   };
 
-  const handleSequentialMessage = (panelIndex: number, message: string) => {
-    if (chatMode === 'sequential' && panelIndex < chatPanels.length - 1) {
-      // Handle sequential mode
-      const nextPanelIndex = panelIndex + 1;
-      const nextPanel = document.querySelector(
-        `[data-panel-index="${nextPanelIndex}"]`
-      );
-      
-      if (nextPanel) {
-        const messageInput = nextPanel.querySelector('.message-input');
-        const modelSelected = nextPanel.querySelector('.model-selector input')?.getAttribute('value');
-        
-        if (messageInput && modelSelected) {
-          const event = new CustomEvent('sequential-message', { 
-            detail: { message },
-            bubbles: true 
-          });
-          messageInput.dispatchEvent(event);
-        } else {
-          setTimeout(() => handleSequentialMessage(panelIndex, message), 500);
-        }
-      }
-    } else if (chatMode === 'iteration') {
-      // Handle iteration mode
-      const nextPanelIndex = (panelIndex + 1) % chatPanels.length;
-      
-      // If we've completed a cycle and there are more cycles to go
-      if (nextPanelIndex === 0 && currentCycle + 1 < iterationCycles) {
-        setCurrentCycle(prev => prev + 1);
-      }
-      
-      // Continue to next panel if we haven't completed all cycles
-      if (!(nextPanelIndex === 0 && currentCycle + 1 >= iterationCycles)) {
-        const nextPanel = document.querySelector(
-          `[data-panel-index="${nextPanelIndex}"]`
-        );
-        
-        if (nextPanel) {
-          const messageInput = nextPanel.querySelector('.message-input');
-          const modelSelected = nextPanel.querySelector('.model-selector input')?.getAttribute('value');
-          
-          if (messageInput && modelSelected) {
-            const event = new CustomEvent('sequential-message', { 
-              detail: { message },
-              bubbles: true 
-            });
-            messageInput.dispatchEvent(event);
-          } else {
-            setTimeout(() => handleSequentialMessage(panelIndex, message), 500);
-          }
-        }
-      }
-      
-      setCurrentIterationPanel(nextPanelIndex);
-    }
+  const handleSequentialMessage = (message: string) => {
+    // Handle sequential message logic
+    console.log('Sequential message:', message);
   };
 
-  const handleParallelMessage = (sourceIndex: number, message: string) => {
-    if (chatMode === 'parallel') {
-      // Send the message to all other panels
-      chatPanels.forEach((_, index) => {
-        if (index !== sourceIndex) {  // Don't send back to source panel
-          const panel = document.querySelector(
-            `[data-panel-index="${index}"]`
-          );
-          
-          if (panel) {
-            const messageInput = panel.querySelector('.message-input');
-            const modelSelected = panel.querySelector('.model-selector input')?.getAttribute('value');
-            
-            if (messageInput && modelSelected) {
-              const event = new CustomEvent('parallel-message', { 
-                detail: { message },
-                bubbles: true 
-              });
-              messageInput.dispatchEvent(event);
-            }
-          }
+  const handleParallelMessage = (message: string) => {
+    // Handle parallel message logic
+    console.log('Parallel message:', message);
+  };
+
+  const handleRecordMessage = (message: string, role: string, assistantName?: string) => {
+    const newMessage = {
+      role,
+      content: message,
+      assistantName,
+      timestamp: new Date().toISOString()
+    };
+    setConversationHistory(prev => [...prev, newMessage]);
+  };
+
+  const handleExport = async (format: string, content: string) => {
+    try {
+      if (format === 'markdown') {
+        // Create a blob with the content
+        const blob = new Blob([content], { type: 'text/markdown' });
+        const url = window.URL.createObjectURL(blob);
+        
+        // Create a temporary link and trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `conversation_summary_${new Date().toISOString().split('T')[0]}.md`;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Clean up
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else if (format === 'pdf') {
+        // Send request to backend to generate PDF
+        const response = await fetch('/api/v1/export/pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to generate PDF');
         }
-      });
+        
+        // Get the PDF blob from response
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        // Create a temporary link and trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `conversation_summary_${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Clean up
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error exporting file:', error);
+      // You might want to show a notification to the user here
     }
   };
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme} defaultColorScheme="dark">
+      <MantineProvider 
+        theme={theme}
+        defaultColorScheme="dark"
+      >
         <AppShell
           header={{ height: 60 }}
           padding="md"
-          style={{ backgroundColor: '#1a1b1e' }}
         >
-          <AppShell.Header style={{ 
-            backgroundColor: '#25262b', 
-            borderBottom: '1px solid #2c2e33',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 100
-          }}>
-            <Box p="xs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Box style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <Text size="xl" fw={700} style={{ color: '#39ff14' }}>
-                  CoChat
-                </Text>
-                <Button
-                  variant="light"
-                  size="sm"
-                  leftSection={<IconPlus size={16} />}
-                  onClick={addChatPanel}
-                  style={{ marginLeft: '1rem' }}
-                  disabled={chatPanels.length >= MAX_PANELS}
-                >
-                  Add Panel {chatPanels.length}/{MAX_PANELS}
-                </Button>
-                <Select
-                  value={chatMode}
-                  onChange={handleModeChange}
-                  data={[
-                    { value: 'individual', label: 'Individual Mode' },
-                    { value: 'sequential', label: 'Sequential Mode' },
-                    { value: 'parallel', label: 'Parallel Mode' },
-                    { value: 'iteration', label: 'Iteration Mode' }
-                  ]}
-                  style={{ 
-                    width: '180px',
-                    marginLeft: '1rem'
-                  }}
-                  placeholder="Select Mode"
-                />
+          <AppShell.Header>
+            <Group justify="space-between" h="100%" px="md">
+              <Title order={3}>CoChat</Title>
+              <Group align="center" gap="lg">
+                <ModeAnimation mode={chatMode} isActive={isModeActive} />
                 {chatMode === 'iteration' && (
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={iterationCycles}
-                    onChange={(e) => setIterationCycles(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                    style={{
-                      width: '60px',
-                      marginLeft: '0.5rem',
-                      padding: '0.25rem',
-                      backgroundColor: '#25262b',
-                      border: '1px solid #2c2e33',
-                      color: '#e0e0e0',
-                      borderRadius: '4px'
-                    }}
-                    placeholder="Cycles"
-                  />
+                  <Text size="sm" c="dimmed">
+                    Cycle {currentCycle + 1} of {maxCycles}
+                  </Text>
                 )}
-              </Box>
-              <ActionIcon 
-                variant="light" 
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                style={{ 
-                  color: '#39ff14',
-                  border: '1px solid #39ff14'
-                }}
-              >
-                <IconSettings size={20} />
-              </ActionIcon>
-            </Box>
+                <Group>
+                  <Tooltip label={isMuted ? "Unmute" : "Mute"}>
+                    <ActionIcon variant="light" onClick={toggleMute}>
+                      {isMuted ? <IconVolumeOff size={20} /> : <IconVolume size={20} />}
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Generate Summary">
+                    <ActionIcon variant="light" onClick={() => setShowSummary(true)}>
+                      <IconFileAnalytics size={20} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Select
+                    data={[
+                      { value: 'individual', label: 'Individual' },
+                      { value: 'sequential', label: 'Sequential' },
+                      { value: 'parallel', label: 'Parallel' },
+                      { value: 'iteration', label: 'Iteration' }
+                    ]}
+                    value={chatMode}
+                    onChange={handleModeChange}
+                    placeholder="Select mode"
+                  />
+                  <Button
+                    variant="light"
+                    leftSection={<IconPlus size={20} />}
+                    onClick={addChatPanel}
+                    disabled={chatPanels.length >= MAX_PANELS}
+                  >
+                    Add Panel
+                  </Button>
+                  <ActionIcon variant="light" onClick={() => setIsSettingsOpen(true)}>
+                    <IconSettings size={20} />
+                  </ActionIcon>
+                </Group>
+              </Group>
+            </Group>
           </AppShell.Header>
 
-          <AppShell.Main style={{ 
-            paddingTop: '60px', // Account for fixed header
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <Box style={{ 
-              position: 'relative',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              height: 'calc(100vh - 60px)', // Full viewport height minus header
-              backgroundColor: '#1a1b1e'
-            }}>
-              {isSettingsOpen && (
-                <Box style={{ 
-                  position: 'fixed',
-                  top: 60,
-                  left: 0,
-                  width: '400px',
-                  height: 'calc(100vh - 60px)',
-                  backgroundColor: '#25262b',
-                  borderRight: '1px solid #2c2e33',
-                  boxShadow: '4px 0 10px rgba(0, 0, 0, 0.2)',
-                  padding: '1rem',
-                  zIndex: 10,
-                  overflowY: 'auto'
-                }}>
-                  <SettingsPanel />
+          <AppShell.Main>
+            <SimpleGrid cols={chatPanels.length <= 3 ? chatPanels.length : 3}>
+              {chatPanels.map((panel, index) => (
+                <Box key={panel.id} h={getPanelHeight()}>
+                  <ChatPanel
+                    title={`Panel ${panel.id}`}
+                    isAutonomous={false}
+                    mode={chatMode}
+                    onRemove={() => removeChatPanel(panel.id)}
+                    panelIndex={index}
+                    totalPanels={chatPanels.length}
+                    onSequentialMessage={handleSequentialMessage}
+                    onParallelMessage={handleParallelMessage}
+                    currentCycle={currentCycle}
+                    onRecordMessage={handleRecordMessage}
+                    recordSequentialConversation={recordSequentialConversations}
+                    onModelResponse={index === 0 ? handleFirstModelResponse : undefined}
+                    onPanelComplete={handlePanelComplete}
+                    maxCycles={maxCycles}
+                  />
                 </Box>
-              )}
-
-              <Box style={{ 
-                marginLeft: isSettingsOpen ? '400px' : '0',
-                transition: 'margin-left 0.3s ease-in-out',
-                padding: '1rem',
-                flex: 1,
-                height: '100%',
-                overflow: 'auto'
-              }}>
-                <SimpleGrid 
-                  cols={{ 
-                    base: 1, 
-                    md: chatPanels.length <= 2 ? 2 : 3 
-                  }} 
-                  spacing="lg"
-                >
-                  {chatPanels.map((panel, index) => (
-                    <Box 
-                      key={panel.id} 
-                      style={{ 
-                        height: getPanelHeight(),
-                        transition: 'height 0.3s ease-in-out'
-                      }}
-                      data-panel-index={index}
-                    >
-                      <ChatPanel
-                        title={panel.title}
-                        isAutonomous={chatMode !== 'individual'}
-                        mode={chatMode}
-                        onRemove={() => removeChatPanel(panel.id)}
-                        panelIndex={index}
-                        totalPanels={chatPanels.length}
-                        onSequentialMessage={
-                          (chatMode === 'sequential' || chatMode === 'iteration')
-                            ? (message) => handleSequentialMessage(index, message)
-                            : undefined
-                        }
-                        onParallelMessage={
-                          chatMode === 'parallel'
-                            ? (message) => handleParallelMessage(index, message)
-                            : undefined
-                        }
-                        currentCycle={chatMode === 'iteration' ? currentCycle : undefined}
-                      />
-                    </Box>
-                  ))}
-                </SimpleGrid>
-              </Box>
-            </Box>
+              ))}
+            </SimpleGrid>
           </AppShell.Main>
         </AppShell>
+
+        <SettingsPanel 
+          opened={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)}
+          models={models}
+        />
+        <SummaryModal
+          opened={showSummary}
+          onClose={() => setShowSummary(false)}
+          conversations={conversationHistory}
+          onExport={handleExport}
+        />
+        <RecordedConversations
+          opened={showRecordings}
+          onClose={() => setShowRecordings(false)}
+        />
+        <VoiceSettings
+          opened={voiceSettingsOpened}
+          onClose={() => setVoiceSettingsOpened(false)}
+        />
+
+        <MantineModal
+          opened={showIterationConfig}
+          onClose={() => setShowIterationConfig(false)}
+          title="Configure Iteration Mode"
+          size="sm"
+        >
+          <Stack gap="md">
+            <NumberInput
+              label="Number of Cycles"
+              description="How many times should the conversation iterate through all panels"
+              value={maxCycles}
+              onChange={(value) => setMaxCycles(Number(value))}
+              min={1}
+              max={10}
+              step={1}
+            />
+            <Button onClick={() => setShowIterationConfig(false)}>
+              Start Iteration
+            </Button>
+          </Stack>
+        </MantineModal>
+
+        <style>
+          {`
+            @keyframes fadeInOut {
+              0% { opacity: 0.7; }
+              50% { opacity: 1; }
+              100% { opacity: 0.7; }
+            }
+            
+            @keyframes pulse {
+              0% { transform: scale(1); }
+              50% { transform: scale(1.2); }
+              100% { transform: scale(1); }
+            }
+            
+            .pulse-animation {
+              animation: pulse 2s infinite;
+            }
+          `}
+        </style>
       </MantineProvider>
     </QueryClientProvider>
-  )
+  );
 }
 
-export default App
+export default App;

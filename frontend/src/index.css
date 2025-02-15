@@ -3,12 +3,34 @@
 @tailwind utilities;
 
 :root {
+  /* Dark theme base colors */
   --mantine-color-body: #1a1b1e;
   --mantine-color-dark-6: #25262b;
   --mantine-color-dark-5: #2c2e33;
+  --mantine-color-dark-4: #373a40;
+  --mantine-color-dark-3: #444750;
+  
+  /* Text colors */
   --mantine-color-text: #e0e0e0;
-  --mantine-primary-color-filled: #39ff14;
-  --mantine-primary-color-filled-hover: #32e012;
+  --mantine-color-text-dimmed: #a1a1a1;
+  
+  /* Primary colors - Softer green */
+  --mantine-primary-color-filled: #00b894;
+  --mantine-primary-color-filled-hover: #00a085;
+  --mantine-primary-color-light: rgba(0, 184, 148, 0.1);
+  
+  /* Accent colors */
+  --mantine-color-accent: #6c5ce7;
+  --mantine-color-accent-hover: #5f51d9;
+  
+  /* Border colors */
+  --mantine-color-border: #2d2f34;
+  --mantine-color-border-light: #373a40;
+  
+  /* Shadow colors */
+  --mantine-shadow-color: rgba(0, 0, 0, 0.2);
+  --mantine-glow-color: rgba(0, 184, 148, 0.15);
+  
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -32,40 +54,82 @@ html, body, #root {
   color: var(--mantine-color-text) !important;
 }
 
-.chat-panel {
-  @apply border border-border rounded-lg;
+.mantine-AppShell-header {
   background-color: var(--mantine-color-dark-6) !important;
-  box-shadow: 0 0 10px rgba(57, 255, 20, 0.1);
-  transition: box-shadow 0.3s ease-in-out;
+  border-bottom: 1px solid var(--mantine-color-border) !important;
+  box-shadow: 0 2px 8px var(--mantine-shadow-color);
+}
+
+.chat-panel {
+  background-color: var(--mantine-color-dark-6) !important;
+  border: 1px solid var(--mantine-color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px var(--mantine-shadow-color);
+  transition: all 0.3s ease-in-out;
+}
+
+.chat-panel:hover {
+  box-shadow: 0 6px 16px var(--mantine-shadow-color), 0 0 0 1px var(--mantine-primary-color-light);
 }
 
 .chat-panel.drag-over {
-  box-shadow: 0 0 20px rgba(57, 255, 20, 0.3) !important;
+  box-shadow: 0 0 0 2px var(--mantine-primary-color-filled), 0 6px 16px var(--mantine-shadow-color);
 }
 
 .message {
-  @apply p-4 my-2 rounded;
-  border: 1px solid var(--mantine-color-dark-5);
+  background-color: var(--mantine-color-dark-5);
+  border: 1px solid var(--mantine-color-border-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.75rem 0;
   transition: all 0.2s ease-in-out;
 }
 
 .message:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(57, 255, 20, 0.1);
-}
-
-.message:active {
-  cursor: grabbing;
-  transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(57, 255, 20, 0.1);
-}
-
-.message.user {
-  background-color: #1a1a1a;
+  background-color: var(--mantine-color-dark-4);
 }
 
 .message.assistant {
   background-color: var(--mantine-color-dark-6);
+  border-left: 3px solid var(--mantine-primary-color-filled);
+}
+
+.message.user {
+  background-color: var(--mantine-color-dark-5);
+  border-left: 3px solid var(--mantine-color-accent);
+}
+
+/* Button styles */
+.mantine-Button-root {
+  transition: all 0.2s ease-in-out;
+}
+
+.mantine-Button-filled {
+  background-color: var(--mantine-primary-color-filled) !important;
+}
+
+.mantine-Button-filled:hover {
+  background-color: var(--mantine-primary-color-filled-hover) !important;
+}
+
+.mantine-Button-light {
+  background-color: var(--mantine-primary-color-light) !important;
+  color: var(--mantine-primary-color-filled) !important;
+}
+
+/* Input styles */
+.mantine-TextInput-input,
+.mantine-Textarea-input,
+.mantine-Select-input {
+  background-color: var(--mantine-color-dark-5) !important;
+  border-color: var(--mantine-color-border) !important;
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-TextInput-input:focus,
+.mantine-Textarea-input:focus,
+.mantine-Select-input:focus {
+  border-color: var(--mantine-primary-color-filled) !important;
 }
 
 .react-grid-item {
@@ -101,12 +165,6 @@ html, body, #root {
   background-color: rgba(57, 255, 20, 0.1) !important;
 }
 
-.mantine-Select-input {
-  background-color: var(--mantine-color-dark-6) !important;
-  border-color: var(--mantine-color-dark-5) !important;
-  color: var(--mantine-color-text) !important;
-}
-
 .mantine-Select-dropdown {
   background-color: var(--mantine-color-dark-6) !important;
   border-color: var(--mantine-color-dark-5) !important;
@@ -124,12 +182,6 @@ html, body, #root {
 
 .mantine-Select-item:hover {
   background-color: rgba(57, 255, 20, 0.1) !important;
-}
-
-.mantine-TextInput-input {
-  background-color: var(--mantine-color-dark-6) !important;
-  border-color: var(--mantine-color-dark-5) !important;
-  color: var(--mantine-color-text) !important;
 }
 
 .mantine-TextInput-input:focus {

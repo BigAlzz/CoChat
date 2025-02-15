@@ -1,0 +1,117 @@
+{
+  "en_US_amy": {
+    "name": "Amy (US English)",
+    "description": "Female US English voice",
+    "language": "en-US"
+  },
+  "en_US_joe": {
+    "name": "Joe (US English)",
+    "description": "Male US English voice",
+    "language": "en-US"
+  },
+  "en_US_lessac": {
+    "name": "Lessac (US English)",
+    "description": "Professional US English voice",
+    "language": "en-US"
+  },
+  "en_GB_alan": {
+    "name": "Alan (British English)",
+    "description": "Male British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-vctk-medium": {
+    "name": "VCTK (British English)",
+    "description": "Multi-speaker British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-northern_english_male-medium": {
+    "name": "Northern British Male",
+    "description": "Male Northern British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-cori-medium": {
+    "name": "Cori (British English)",
+    "description": "Female British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-alba-medium": {
+    "name": "Alba (British English)",
+    "description": "Female Scottish English voice",
+    "language": "en-GB"
+  },
+  "en_GB-alan-medium": {
+    "name": "Alan Medium (British English)",
+    "description": "Male British English voice - Medium quality",
+    "language": "en-GB"
+  },
+  "Microsoft David Desktop": {
+    "name": "David",
+    "description": "Male US English voice",
+    "language": "en-US",
+    "gender": "male",
+    "isDefault": false
+  },
+  "Microsoft Zira Desktop": {
+    "name": "Zira",
+    "description": "Female US English voice",
+    "language": "en-US",
+    "gender": "female",
+    "isDefault": false
+  },
+  "Microsoft Mark Desktop": {
+    "name": "Mark",
+    "description": "Male British English voice",
+    "language": "en-GB",
+    "gender": "male",
+    "isDefault": false
+  },
+  "Microsoft Hazel Desktop": {
+    "name": "Hazel",
+    "description": "Female British English voice",
+    "language": "en-GB",
+    "gender": "female",
+    "isDefault": true
+  },
+  "Microsoft James Desktop": {
+    "name": "James",
+    "description": "Male British English voice",
+    "language": "en-GB",
+    "gender": "male",
+    "isDefault": false
+  },
+  "Microsoft Catherine Desktop": {
+    "name": "Catherine",
+    "description": "Female British English voice",
+    "language": "en-GB",
+    "gender": "female",
+    "isDefault": false
+  },
+  "Microsoft Susan Desktop": {
+    "name": "Susan",
+    "description": "Female British English voice",
+    "language": "en-GB",
+    "gender": "female",
+    "isDefault": false
+  },
+  "Microsoft Richard Desktop": {
+    "name": "Richard",
+    "description": "Male British English voice",
+    "language": "en-GB",
+    "gender": "male",
+    "isDefault": false
+  },
+  "Microsoft Linda Desktop": {
+    "name": "Linda",
+    "description": "Female US English voice",
+    "language": "en-US",
+    "gender": "female",
+    "isDefault": false
+  },
+  "Microsoft George Desktop": {
+    "name": "George",
+    "description": "Male British English voice",
+    "language": "en-GB",
+    "gender": "male",
+    "isDefault": false
+  }
+}

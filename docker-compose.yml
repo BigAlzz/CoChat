@@ -10,11 +10,10 @@ services:
     volumes:
       - ./app:/app/app
       - ./static:/app/static
+      - ./voices:/app/voices
+      - ./app/temp:/app/temp
     environment:
       - PYTHONPATH=/app
-      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL}
-      - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY}
-      - DATABASE_URL=${DATABASE_URL}
     networks:
       - cochat-network
 
@@ -23,7 +22,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "5173:5173"
     volumes:
       - ./frontend/src:/app/src
     environment:
