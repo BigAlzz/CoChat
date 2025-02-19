@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
+import json
 import tempfile
 import uuid
 import win32com.client
@@ -29,6 +30,7 @@ except Exception as e:
 class TTSRequest(BaseModel):
     text: str
     voice: str = None
+    service: str = "windows"
 
 class TTSResponse(BaseModel):
     status: str
@@ -37,7 +39,7 @@ class TTSResponse(BaseModel):
 
 @router.get("/voices")
 async def list_voices() -> List[Dict[str, Any]]:
-    """Get list of available Windows SAPI voices."""
+    """Get list of available voices."""
     try:
         voices = []
         
@@ -50,6 +52,7 @@ async def list_voices() -> List[Dict[str, Any]]:
                     "id": voice_id,
                     "name": voice_name,
                     "description": f"Windows SAPI voice - {voice_name}",
+                    "service": "windows",
                     "isDefault": True
                 })
         
@@ -139,4 +142,4 @@ async def download_audio(filename: str):
         )
     except Exception as e:
         logger.error(f"Error downloading audio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) 
