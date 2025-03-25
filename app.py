@@ -175,24 +175,95 @@ def process_image_reference(match):
         print(f"Error processing image: {str(e)}")
         return None
 
+def process_image_references(message):
+    """Process any image references in the message and return processed message"""
+    try:
+        # Check for image references in the format [Image: filename](path)
+        image_pattern = r'\[Image:\s+([^\]]+)\]\(([^)]+)\)'
+        processed_message = message
+        image_references = []
+        
+        # Process all image references
+        for match in re.finditer(image_pattern, message):
+            image_data = process_image_reference(match)
+            if image_data:
+                image_references.append(image_data)
+                # Replace the image reference with a placeholder
+                processed_message = processed_message.replace(match.group(0), f'[Image {len(image_references)}]')
+        
+        # If we have images, append them to the message
+        if image_references:
+            processed_message += "\n\nImages:\n" + "\n".join(image_references)
+            
+        return processed_message
+    except Exception as e:
+        print(f"Error processing image references: {e}")
+        return message
+
+def prepare_prompt(message, mode, posture, role):
+    """Prepare the prompt based on mode, posture, and role"""
+    try:
+        # Base system message
+        system_message = f"You are a {role} with a {posture} communication style. "
+        
+        # Add mode-specific instructions
+        if mode == 'sequential':
+            system_message += "You are part of a sequential conversation where each assistant builds upon previous responses. "
+        elif mode == 'parallel':
+            system_message += "You are part of a parallel conversation where multiple assistants provide different perspectives. "
+        
+        # Add role-specific instructions
+        if role == 'researcher':
+            system_message += "Focus on providing well-researched, factual information with appropriate citations. "
+        elif role == 'teacher':
+            system_message += "Focus on explaining concepts clearly and providing educational context. "
+        elif role == 'assistant':
+            system_message += "Focus on being helpful and providing practical assistance. "
+        
+        # Add posture-specific instructions
+        if posture == 'concise':
+            system_message += "Keep your responses brief and to the point. "
+        elif posture == 'detailed':
+            system_message += "Provide comprehensive, detailed responses. "
+        elif posture == 'friendly':
+            system_message += "Maintain a friendly and approachable tone. "
+        
+        # Combine system message with user message
+        prompt = f"{system_message}\n\nUser message: {message}"
+        
+        return prompt
+    except Exception as e:
+        print(f"Error preparing prompt: {e}")
+        return message
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
-        prompt = request.form.get('prompt')
-        model = request.form.get('model')
-        posture = request.form.get('posture', '')
-        role = request.form.get('role', '')
-        stream_enabled = request.form.get('stream', 'false').lower() == 'true'
+        data = request.get_json()
+        message = data.get('message', '')
+        model = data.get('model', '')
+        stream = data.get('stream', True)
+        temperature = data.get('temperature', 0.7)
+        max_tokens = data.get('max_tokens', 2000)
+        top_p = data.get('top_p', 1.0)
+        frequency_penalty = data.get('frequency_penalty', 0.0)
+        presence_penalty = data.get('presence_penalty', 0.0)
+        stop = data.get('stop', [])
+        mode = data.get('mode', 'individual')
+        posture = data.get('posture', 'neutral')
+        role = data.get('role', 'assistant')
 
-        # Debug logging
-        print(f"Received chat request - Model: {model}, Stream: {stream_enabled}")
-        print(f"Prompt: {prompt}")
-
-        if not model:
-            return jsonify({"error": "No model selected. Please select a model first."}), 400
+        if not message or not model:
+            return jsonify({'error': 'Message and model are required'}), 400
 
         # Get server URL from session or use default
         server_url = session.get('lm_studio_url', LM_STUDIO_SERVER)
+        
+        # Clean up the server URL
+        if server_url.endswith('/v1'):
+            server_url = server_url[:-3]
+        if server_url.endswith('/'):
+            server_url = server_url[:-1]
         
         # Verify server connection before proceeding
         try:
@@ -202,132 +273,86 @@ def chat():
             print(f"Server connection error: {str(e)}")
             return jsonify({"error": "Cannot connect to LM Studio server. Please check your connection and server settings."}), 503
 
-        # Check if prompt contains image references
-        image_pattern = r'\[Image:\s+([^\]]+)\]\(([^)]+)\)'
-        processed_prompt = prompt
-        image_references = []
-        
-        # Process all image references
-        for match in re.finditer(image_pattern, prompt):
-            image_data = process_image_reference(match)
-            if image_data:
-                image_references.append(image_data)
-                # Replace the image reference with a placeholder
-                processed_prompt = processed_prompt.replace(match.group(0), f'[Image {len(image_references)}]')
-        
-        # Debug logging for processed prompt
-        print(f"Processed prompt length: {len(processed_prompt)}")
-        print(f"Processed prompt preview: {processed_prompt[:50]}...")
-        
-        # Prepare messages array
-        messages = [
-            {
-                "role": "system",
-                "content": f"You are a {role} with a {posture} communication style. Respond appropriately to the user's message."
-            }
-        ]
-        
-        # Add user message with images if present
-        user_message = {
-            "role": "user",
-            "content": processed_prompt
+        # Process any image references in the message
+        processed_message = process_image_references(message)
+
+        # Prepare the prompt based on mode, posture, and role
+        prompt = prepare_prompt(processed_message, mode, posture, role)
+
+        # Prepare the request to LM Studio
+        headers = {'Content-Type': 'application/json'}
+        payload = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'top_p': top_p,
+            'frequency_penalty': frequency_penalty,
+            'presence_penalty': presence_penalty,
+            'stop': stop,
+            'stream': stream
         }
-        
-        # Add images if present
-        if image_references:
-            user_message["content"] = processed_prompt + "\n\nImages:\n" + "\n".join(image_references)
-        
-        messages.append(user_message)
-        
-        # Prepare the API request
-        data = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": 2000,
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "stop": None,
-            "timeout": LONG_REQUEST_TIMEOUT
-        }
-        
-        print(f"Using LM Studio server: {server_url}")
-        print(f"Request timeout: {LONG_REQUEST_TIMEOUT} seconds")
-        
-        response = requests.post(
-            f"{server_url}/v1/chat/completions", 
-            headers={"Content-Type": "application/json"}, 
-            json=data, 
-            stream=stream_enabled, 
-            timeout=LONG_REQUEST_TIMEOUT
-        )
-        print(f"LM Studio response status: {response.status_code}")
-        
-        if stream_enabled:
+
+        print(f"Sending request to {server_url}/v1/chat/completions")
+        print(f"Request payload: {json.dumps(payload, indent=2)}")
+
+        if stream:
             def generate():
                 try:
+                    response = requests.post(
+                        f"{server_url}/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        stream=True,
+                        timeout=LONG_REQUEST_TIMEOUT
+                    )
+                    
+                    if not response.ok:
+                        error_data = response.json()
+                        yield f"data: {json.dumps({'error': error_data.get('error', 'Unknown error')})}\n\n"
+                        return
+
                     for line in response.iter_lines():
                         if line:
-                            line = line.decode('utf-8')
-                            if line.startswith('data: '):
-                                try:
-                                    json_str = line[6:]  # Remove 'data: ' prefix
-                                    if json_str == '[DONE]':
-                                        yield 'data: {"type":"done"}\n\n'
-                                        continue
-                                        
-                                    json_data = json.loads(json_str)
-                                    if 'choices' in json_data and len(json_data['choices']) > 0:
-                                        content = json_data['choices'][0].get('delta', {}).get('content', '')
-                                        if content:
-                                            yield f'data: {{"type":"content","content":{json.dumps(content)}}}\n\n'
-                                except json.JSONDecodeError as e:
-                                    print(f"Error parsing JSON: {str(e)}, Line: {line}")
-                                    yield f'data: {{"type":"error","content":"Error parsing response"}}\n\n'
-                                except Exception as e:
-                                    print(f"Error processing stream: {str(e)}")
-                                    yield f'data: {{"type":"error","content":"Error processing response"}}\n\n'
+                            try:
+                                line = line.decode('utf-8')
+                                if line.startswith('data: '):
+                                    data = line[6:]
+                                    if data == '[DONE]':
+                                        yield 'data: [DONE]\n\n'
+                                    else:
+                                        yield f"data: {data}\n\n"
+                            except Exception as e:
+                                print(f"Error processing line: {e}")
+                                continue
                 except Exception as e:
-                    print(f"Error in stream generation: {str(e)}")
-                    yield f'data: {{"type":"error","content":"Error generating response"}}\n\n'
-                finally:
-                    yield 'data: {"type":"done"}\n\n'
-            
+                    print(f"Error in stream generation: {e}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    yield 'data: [DONE]\n\n'
+
             return Response(generate(), mimetype='text/event-stream')
         else:
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    if 'choices' in data and len(data['choices']) > 0:
-                        content = data['choices'][0].get('message', {}).get('content', '')
-                        return jsonify({"response": content})
-                    else:
-                        return jsonify({"error": "No content in response"}), 500
-                except Exception as e:
-                    print(f"Error parsing non-streaming response: {str(e)}")
-                    return jsonify({"error": f"Error parsing response: {str(e)}"}), 500
-            else:
-                error_msg = f"API request failed with status {response.status_code}"
-                print(error_msg)
-                return jsonify({"error": error_msg}), response.status_code
+            try:
+                response = requests.post(
+                    f"{server_url}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=LONG_REQUEST_TIMEOUT
+                )
                 
-    except requests.exceptions.Timeout:
-        error_msg = "Request timed out. The model is taking too long to respond."
-        print(error_msg)
-        return jsonify({"error": error_msg}), 504
-    except requests.exceptions.ConnectionError:
-        error_msg = "Cannot connect to LM Studio server. Please check your connection and server settings."
-        print(error_msg)
-        return jsonify({"error": error_msg}), 503
-    except requests.exceptions.RequestException as e:
-        error_msg = f"Error communicating with LM Studio: {str(e)}"
-        print(error_msg)
-        return jsonify({"error": error_msg}), 500
+                if not response.ok:
+                    error_data = response.json()
+                    return jsonify({'error': error_data.get('error', 'Unknown error')}), response.status_code
+
+                data = response.json()
+                return jsonify(data)
+            except Exception as e:
+                print(f"Error in non-streaming request: {e}")
+                return jsonify({'error': str(e)}), 500
+
     except Exception as e:
-        error_msg = f"Error in chat endpoint: {str(e)}"
-        print(error_msg)
-        return jsonify({"error": error_msg}), 500
+        print(f"Error in chat endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/summarize', methods=['POST'])
 def summarize():

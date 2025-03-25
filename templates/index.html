@@ -707,7 +707,7 @@
         }
         
         // Function to handle message sending
-        function sendMessage(button) {
+        async function sendMessage(button) {
             const panel = button.closest('.chat-panel');
             if (!panel) {
                 console.error("Cannot find parent panel for send button");
@@ -768,14 +768,6 @@
             const role = roleSelect.value;
             const posture = postureSelect.value;
             
-            // Create FormData for the request
-            const formData = new FormData();
-            formData.append('prompt', message);
-            formData.append('model', model);
-            formData.append('role', role);
-            formData.append('posture', posture);
-            formData.append('stream', streamEnabled);
-            
             // Send the message to the server
             let controller = new AbortController();
             const signal = controller.signal;
@@ -807,68 +799,97 @@
                 messageLength: message.length
             });
             
-            fetch('/chat', {
-                method: 'POST',
-                body: formData,
-                signal: signal
-            })
-            .then(response => {
-                console.log('Received response:', response.status);
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message,
+                        model: model,
+                        stream: streamEnabled,
+                        temperature: 0.7,
+                        max_tokens: 2000,
+                        top_p: 0.95,
+                        frequency_penalty: 0,
+                        presence_penalty: 0,
+                        stop: [],
+                        mode: processingMode,
+                        posture: posture,
+                        role: role
+                    })
+                });
+
                 if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || `Server returned ${response.status}: ${response.statusText}`);
-                    });
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
-                // Remove analyzing animation if it exists
-                const analyzingElement = chatWindow.querySelector('.analyzing-container');
-                if (analyzingElement) {
-                    analyzingElement.remove();
-                }
-                
+
                 if (streamEnabled) {
-                    // Create assistant message for streaming
-                    const assistantMessage = createMessageWithCopy('', 'assistant-message');
-                    assistantMessage.dataset.panelId = panel.id;
-                    chatWindow.appendChild(assistantMessage);
-                    chatWindow.scrollTop = chatWindow.scrollHeight;
-                    
-                    const contentDiv = assistantMessage.querySelector('.message-content');
+                    // Handle streaming response
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder();
-                    
-                    return readStream(reader, decoder, contentDiv, chatWindow);
+                    let assistantResponse = '';
+                    let assistantMessage = null;
+
+                    while (true) {
+                        const {value, done} = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') {
+                                    break;
+                                }
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    if (parsed.choices && parsed.choices[0]) {
+                                        const content = parsed.choices[0].delta.content || '';
+                                        assistantResponse += content;
+                                        
+                                        // Create or update the assistant message
+                                        if (!assistantMessage) {
+                                            assistantMessage = createMessageWithCopy(assistantResponse, 'assistant-message');
+                                            assistantMessage.dataset.panelId = panel.id;
+                                            chatWindow.appendChild(assistantMessage);
+                                        } else {
+                                            assistantMessage.querySelector('.message-content').textContent = assistantResponse;
+                                        }
+                                        
+                                        chatWindow.scrollTop = chatWindow.scrollHeight;
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing streaming data:', e);
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Handle non-streaming response
-                    return response.json().then(data => {
-                        if (data.error) {
-                            throw new Error(data.error);
-                        }
-                        
-                        // Create assistant message for non-streaming response
-                        const assistantMessage = createMessageWithCopy(data.response || '', 'assistant-message');
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    if (data.choices && data.choices[0]) {
+                        const content = data.choices[0].message.content;
+                        const assistantMessage = createMessageWithCopy(content, 'assistant-message');
                         assistantMessage.dataset.panelId = panel.id;
                         chatWindow.appendChild(assistantMessage);
                         chatWindow.scrollTop = chatWindow.scrollHeight;
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error in chat:', error);
-                if (error.name !== 'AbortError') {
-                    // Remove analyzing animation if it exists
-                    const analyzingElement = chatWindow.querySelector('.analyzing-container');
-                    if (analyzingElement) {
-                        analyzingElement.remove();
+                    } else {
+                        throw new Error('Invalid response format from server');
                     }
-                    
-                    // Add error message to chat
-                    const errorMessage = createMessageWithCopy('Error: ' + error.message, 'error-message');
-                    chatWindow.appendChild(errorMessage);
-                    chatWindow.scrollTop = chatWindow.scrollHeight;
                 }
-            })
-            .finally(() => {
+            } catch (error) {
+                console.error('Error:', error);
+                const errorMessage = createMessageWithCopy('Error: ' + error.message, 'error-message');
+                chatWindow.appendChild(errorMessage);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            } finally {
                 // Re-enable the send button, hide stop button
                 sendButton.disabled = false;
                 stopButton.style.display = 'none';
@@ -884,51 +905,7 @@
                     detail: { panelId: panel.id }
                 });
                 document.dispatchEvent(event);
-            });
-        }
-        
-        // Function to read stream
-        function readStream(reader, decoder, contentElement, chatWindow) {
-            return reader.read().then(({ done, value }) => {
-                if (done) {
-                    return;
-                }
-                
-                const chunk = decoder.decode(value, { stream: true });
-                console.log('Received chunk:', chunk);  // Debug log
-                
-                try {
-                    // Split the chunk into lines
-                    const lines = chunk.split('\n');
-                    
-                    for (const line of lines) {
-                        if (line.startsWith('data:')) {
-                            const jsonStr = line.substring(5).trim();
-                            if (!jsonStr || jsonStr === '[DONE]') continue;
-                            
-                            try {
-                                const data = JSON.parse(jsonStr);
-                                console.log('Parsed data:', data);  // Debug log
-                                
-                                if (data.type === 'content' && data.content) {
-                                    contentElement.textContent += data.content;
-                                    chatWindow.scrollTop = chatWindow.scrollHeight;
-                                } else if (data.type === 'error') {
-                                    console.error('Error from server:', data.content);
-                                    contentElement.innerHTML += `<div class="error-message">Error: ${data.content}</div>`;
-                                    chatWindow.scrollTop = chatWindow.scrollHeight;
-                                }
-                            } catch (error) {
-                                console.error('Error parsing JSON:', error, 'Raw data:', jsonStr);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error processing chunk:', error);
-                }
-                
-                return readStream(reader, decoder, contentElement, chatWindow);
-            });
+            }
         }
         
         // Function to check if we can send in sequential mode
@@ -955,26 +932,27 @@
             
             // Check if the previous panel has received a response
             const previousPanel = panels[currentIndex - 1];
-            const previousPanelMessages = previousPanel.querySelectorAll('.assistant-message');
-            console.log("Previous panel has", previousPanelMessages.length, "assistant messages");
+            const previousPanelMessages = previousPanel.querySelectorAll('.message');
+            console.log("Previous panel has", previousPanelMessages.length, "messages");
             
-            // If the previous panel has no assistant messages, we can't send
+            // If the previous panel has no messages at all, we can't send
             if (previousPanelMessages.length === 0) {
-                console.log("Previous panel has no assistant messages, blocking send");
+                console.log("Previous panel has no messages, blocking send");
                 return false;
             }
             
-            // Check if there's a pending response in any previous panel
-            const previousPanels = panels.slice(0, currentIndex);
-            const hasPendingResponse = previousPanels.some(panel => {
-                const stopButtonVisible = panel.querySelector('.stop-button').style.display !== 'none';
-                if (stopButtonVisible) {
-                    console.log("Panel", panel.id, "has a pending response");
-                }
-                return stopButtonVisible;
-            });
+            // Check if the last message in the previous panel is from the assistant
+            const lastMessage = previousPanelMessages[previousPanelMessages.length - 1];
+            const isLastMessageFromAssistant = !lastMessage.classList.contains('user-message');
+            console.log("Last message is from assistant:", isLastMessageFromAssistant);
             
-            const canSend = !hasPendingResponse;
+            // Check if there's a pending response in the previous panel
+            const previousStopButton = previousPanel.querySelector('.stop-button');
+            const hasPendingResponse = previousStopButton && previousStopButton.style.display !== 'none';
+            console.log("Previous panel has pending response:", hasPendingResponse);
+            
+            // Can send if the last message is from the assistant and there's no pending response
+            const canSend = isLastMessageFromAssistant && !hasPendingResponse;
             console.log("Can send in sequential mode:", canSend);
             return canSend;
         }
@@ -991,34 +969,6 @@
             
             // Log that the event listener is registered
             console.log("Sequential mode event listener registered");
-            
-            // Verify the listener is registered by testing event dispatch
-            const testEvent = new CustomEvent('responseComplete', {
-                detail: { panelId: 'test-panel', test: true }
-            });
-            
-            // Debug - determine if event listener is working
-            const testHandler = (e) => {
-                if (e.detail.test) {
-                    console.log("Sequential mode test event received correctly");
-                    // Remove this test handler after verification
-                    document.removeEventListener('responseComplete_test', testHandler);
-                }
-            };
-            
-            // Add test handler
-            document.addEventListener('responseComplete_test', testHandler);
-            
-            // Dispatch test event
-            const testEvent2 = new CustomEvent('responseComplete_test', {
-                detail: { panelId: 'test-panel', test: true }
-            });
-            
-            // Dispatch the test events
-            setTimeout(() => {
-                document.dispatchEvent(testEvent);
-                document.dispatchEvent(testEvent2);
-            }, 100);
         }
         
         // Function to handle response complete event
@@ -1044,7 +994,7 @@
                 console.log("Next panel id:", nextPanel.id);
                 
                 // Get all messages from the current panel
-                const messages = Array.from(currentPanel.querySelectorAll('.assistant-message'));
+                const messages = Array.from(currentPanel.querySelectorAll('.message'));
                 
                 // Extract the entire conversation history
                 let conversationHistory = [];
@@ -1123,7 +1073,7 @@
                             } else {
                                 console.error("Send button not available or disabled in panel:", nextPanel.id);
                             }
-                        }, 2000); // Increased delay to 2 seconds for better reliability
+                        }, 1000); // Reduced delay to 1 second for better responsiveness
                     } else {
                         console.error("Could not find textarea in next panel:", nextPanel.id);
                     }
