@@ -1,0 +1,241 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Dark theme base colors */
+  --mantine-color-body: #1a1b1e;
+  --mantine-color-dark-6: #25262b;
+  --mantine-color-dark-5: #2c2e33;
+  --mantine-color-dark-4: #373a40;
+  --mantine-color-dark-3: #444750;
+  
+  /* Text colors */
+  --mantine-color-text: #e0e0e0;
+  --mantine-color-text-dimmed: #a1a1a1;
+  
+  /* Primary colors - Softer green */
+  --mantine-primary-color-filled: #00b894;
+  --mantine-primary-color-filled-hover: #00a085;
+  --mantine-primary-color-light: rgba(0, 184, 148, 0.1);
+  
+  /* Accent colors */
+  --mantine-color-accent: #6c5ce7;
+  --mantine-color-accent-hover: #5f51d9;
+  
+  /* Border colors */
+  --mantine-color-border: #2d2f34;
+  --mantine-color-border-light: #373a40;
+  
+  /* Shadow colors */
+  --mantine-shadow-color: rgba(0, 0, 0, 0.2);
+  --mantine-glow-color: rgba(0, 184, 148, 0.15);
+  
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+}
+
+html, body, #root {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}
+
+.mantine-AppShell-root {
+  background-color: var(--mantine-color-body) !important;
+}
+
+.mantine-AppShell-main {
+  background-color: var(--mantine-color-body) !important;
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-AppShell-header {
+  background-color: var(--mantine-color-dark-6) !important;
+  border-bottom: 1px solid var(--mantine-color-border) !important;
+  box-shadow: 0 2px 8px var(--mantine-shadow-color);
+}
+
+.chat-panel {
+  background-color: var(--mantine-color-dark-6) !important;
+  border: 1px solid var(--mantine-color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px var(--mantine-shadow-color);
+  transition: all 0.3s ease-in-out;
+}
+
+.chat-panel:hover {
+  box-shadow: 0 6px 16px var(--mantine-shadow-color), 0 0 0 1px var(--mantine-primary-color-light);
+}
+
+.chat-panel.drag-over {
+  box-shadow: 0 0 0 2px var(--mantine-primary-color-filled), 0 6px 16px var(--mantine-shadow-color);
+}
+
+.message {
+  background-color: var(--mantine-color-dark-5);
+  border: 1px solid var(--mantine-color-border-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  transition: all 0.2s ease-in-out;
+}
+
+.message:hover {
+  background-color: var(--mantine-color-dark-4);
+}
+
+.message.assistant {
+  background-color: var(--mantine-color-dark-6);
+  border-left: 3px solid var(--mantine-primary-color-filled);
+}
+
+.message.user {
+  background-color: var(--mantine-color-dark-5);
+  border-left: 3px solid var(--mantine-color-accent);
+}
+
+/* Button styles */
+.mantine-Button-root {
+  transition: all 0.2s ease-in-out;
+}
+
+.mantine-Button-filled {
+  background-color: var(--mantine-primary-color-filled) !important;
+}
+
+.mantine-Button-filled:hover {
+  background-color: var(--mantine-primary-color-filled-hover) !important;
+}
+
+.mantine-Button-light {
+  background-color: var(--mantine-primary-color-light) !important;
+  color: var(--mantine-primary-color-filled) !important;
+}
+
+/* Input styles */
+.mantine-TextInput-input,
+.mantine-Textarea-input,
+.mantine-Select-input {
+  background-color: var(--mantine-color-dark-5) !important;
+  border-color: var(--mantine-color-border) !important;
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-TextInput-input:focus,
+.mantine-Textarea-input:focus,
+.mantine-Select-input:focus {
+  border-color: var(--mantine-primary-color-filled) !important;
+}
+
+.react-grid-item {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.react-grid-item.react-grid-placeholder {
+  @apply bg-border opacity-20 rounded-lg;
+  border: 2px dashed var(--mantine-primary-color-filled);
+}
+
+.react-resizable-handle {
+  @apply absolute w-5 h-5 bottom-0 right-0 cursor-se-resize;
+}
+
+/* Mantine overrides */
+.mantine-Button-root {
+  background-color: var(--mantine-primary-color-filled) !important;
+  color: black !important;
+}
+
+.mantine-Button-root:hover {
+  background-color: var(--mantine-primary-color-filled-hover) !important;
+}
+
+.mantine-Button-root[data-variant="light"] {
+  background-color: transparent !important;
+  color: var(--mantine-primary-color-filled) !important;
+  border: 1px solid var(--mantine-primary-color-filled) !important;
+}
+
+.mantine-Button-root[data-variant="light"]:hover {
+  background-color: rgba(57, 255, 20, 0.1) !important;
+}
+
+.mantine-Select-dropdown {
+  background-color: var(--mantine-color-dark-6) !important;
+  border-color: var(--mantine-color-dark-5) !important;
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-Select-item {
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-Select-item[data-selected] {
+  background-color: var(--mantine-primary-color-filled) !important;
+  color: black !important;
+}
+
+.mantine-Select-item:hover {
+  background-color: rgba(57, 255, 20, 0.1) !important;
+}
+
+.mantine-TextInput-input:focus {
+  border-color: var(--mantine-primary-color-filled) !important;
+}
+
+.mantine-Modal-content {
+  background-color: var(--mantine-color-dark-6) !important;
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-Table-root {
+  color: var(--mantine-color-text) !important;
+}
+
+.mantine-Table-root th {
+  background-color: var(--mantine-color-dark-6) !important;
+  color: var(--mantine-primary-color-filled) !important;
+  border-bottom: 1px solid var(--mantine-color-dark-5) !important;
+}
+
+.mantine-Table-root td {
+  border-color: var(--mantine-color-dark-5) !important;
+}
+
+.mantine-Table-root tr:hover {
+  background-color: rgba(57, 255, 20, 0.05) !important;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--mantine-color-dark-5);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.panel-header h3 {
+  color: var(--mantine-primary-color-filled) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mantine-color-body);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mantine-color-dark-5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mantine-primary-color-filled);
+}

@@ -24,7 +24,7 @@ CoChat is a web-based collaborative chat interface that allows multiple AI assis
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/cochat.git
+git clone https://github.com/BigAlzz/CoChat.git
 cd cochat
 ```
 

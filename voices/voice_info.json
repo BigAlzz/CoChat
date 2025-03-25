@@ -1,0 +1,77 @@
+{
+  "en_US_amy": {
+    "name": "Amy (US English)",
+    "description": "Female US English voice",
+    "language": "en-US"
+  },
+  "en_US_joe": {
+    "name": "Joe (US English)",
+    "description": "Male US English voice",
+    "language": "en-US"
+  },
+  "en_GB_jenny": {
+    "name": "Jenny (British English)",
+    "description": "Female British English voice",
+    "language": "en-GB"
+  },
+  "en_GB_marcus": {
+    "name": "Marcus (British English)",
+    "description": "Male British English voice",
+    "language": "en-GB"
+  },
+  "en_AU_emma": {
+    "name": "Emma (Australian English)",
+    "description": "Female Australian English voice",
+    "language": "en-AU"
+  },
+  "en_IN_sam": {
+    "name": "Sam (Indian English)",
+    "description": "Male Indian English voice",
+    "language": "en-IN"
+  },
+  "en_US_lessac": {
+    "name": "Lessac (US English)",
+    "description": "Professional US English voice",
+    "language": "en-US"
+  },
+  "en_US_kathleen": {
+    "name": "Kathleen (US English)",
+    "description": "Female US English voice",
+    "language": "en-US"
+  },
+  "en_GB_southern_english_female": {
+    "name": "Southern British Female",
+    "description": "Female Southern British English voice",
+    "language": "en-GB"
+  },
+  "en_GB_alan": {
+    "name": "Alan (British English)",
+    "description": "Male British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-vctk-medium": {
+    "name": "VCTK (British English)",
+    "description": "Multi-speaker British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-northern_english_male-medium": {
+    "name": "Northern British Male",
+    "description": "Male Northern British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-cori-medium": {
+    "name": "Cori (British English)",
+    "description": "Female British English voice",
+    "language": "en-GB"
+  },
+  "en_GB-alba-medium": {
+    "name": "Alba (British English)",
+    "description": "Female Scottish English voice",
+    "language": "en-GB"
+  },
+  "en_GB-alan-medium": {
+    "name": "Alan Medium (British English)",
+    "description": "Male British English voice - Medium quality",
+    "language": "en-GB"
+  }
+}
