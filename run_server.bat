@@ -1,0 +1,3 @@
+@echo off
+echo Executing server...
+call start_server.bat 

@@ -4,23 +4,11 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+Venv/
 venv/
+ENV/
+env/
+.env
 
 # IDE
 .idea/
@@ -28,6 +16,12 @@ venv/
 *.swp
 *.swo
 
-# OS
+# Project specific
+uploads/
+*.log
+*.db
+*.sqlite3
+
+# OS specific
 .DS_Store
 Thumbs.db 

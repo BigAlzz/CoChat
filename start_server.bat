@@ -1,0 +1,3 @@
+@echo off
+echo Starting Flask server in virtual environment...
+powershell -Command ".\Venv\Scripts\Activate.ps1; python app.py" 
