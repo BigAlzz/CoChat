@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CoChat</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="app-header">
@@ -41,8 +41,15 @@
             <!-- Template for assistant panel -->
             <div class="chat-panel" id="assistant-1">
                 <div class="panel-header">
-                <h5>professional researcher</h5>
-                <button class="close-button" onclick="removeAssistant('assistant-1')"><i class="bi bi-x-lg"></i></button>
+                <h5 class="panel-title"></h5>
+                <div class="panel-header-controls">
+                    <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <button class="btn-close" onclick="closePanel(this)" title="Close panel">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
                 </div>
                 <div class="model-config">
                 <div class="d-flex align-items-center justify-content-between px-3 py-2">
@@ -78,8 +85,8 @@
                             <option value="writer">Writer</option>
                         </select>
                         <div class="ms-auto d-flex gap-2">
-                            <input type="file" class="file-input" accept="*/*" style="display: none;">
-                            <button class="btn btn-sm btn-outline-secondary upload-btn" title="Upload File/Image" style="display: none;">
+                            <input type="file" class="file-input" accept="image/*,.pdf" style="display: none;">
+                            <button class="btn btn-sm btn-outline-secondary upload-btn" title="Upload File/Image">
                                 <i class="bi bi-upload"></i>
                             </button>
                             <button class="send-button">Send</button>
@@ -457,8 +464,15 @@
             
             panel.innerHTML = `
                 <div class="panel-header">
-                    <h5>${posture} ${role}</h5>
-                    <button class="close-button" onclick="removeAssistant('assistant-${id}')"><i class="bi bi-x-lg"></i></button>
+                    <h5 class="panel-title"></h5>
+                    <div class="panel-header-controls">
+                        <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        <button class="btn-close" onclick="closePanel(this)" title="Close panel">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="model-config">
                     <div class="d-flex align-items-center justify-content-between px-3 py-2">
@@ -494,8 +508,8 @@
                                 <option value="writer" ${role === 'writer' ? 'selected' : ''}>Writer</option>
                             </select>
                             <div class="ms-auto d-flex gap-2">
-                                <input type="file" class="file-input" accept="*/*" style="display: none;">
-                                <button class="btn btn-sm btn-outline-secondary upload-btn" title="Upload File/Image" style="display: none;">
+                                <input type="file" class="file-input" accept="image/*,.pdf" style="display: none;">
+                                <button class="btn btn-sm btn-outline-secondary upload-btn" title="Upload File/Image">
                                     <i class="bi bi-upload"></i>
                                 </button>
                                 <button class="send-button">Send</button>
@@ -521,26 +535,186 @@
             const fileInput = panel.querySelector('.file-input');
             
             if (uploadBtn && fileInput) {
-                // Make upload button visible
+                // Always show upload button
                 uploadBtn.style.display = 'inline-flex';
                 
-                // Remove any existing listeners
-                uploadBtn.replaceWith(uploadBtn.cloneNode(true));
-                fileInput.replaceWith(fileInput.cloneNode(true));
-                
-                // Get fresh references
-                const newUploadBtn = panel.querySelector('.upload-btn');
-                const newFileInput = panel.querySelector('.file-input');
-                
-                // Add click handler
-                newUploadBtn.addEventListener('click', () => {
-                    newFileInput.click();
+                uploadBtn.addEventListener('click', () => {
+                    fileInput.click();
                 });
                 
-                // Add change handler
-                newFileInput.addEventListener('change', handleUpload);
+                fileInput.addEventListener('change', async (e) => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    
+                    const file = files[0];
+                    const modelSelect = panel.querySelector('.model-select');
+                    const selectedModel = modelSelect.value;
+                    const model = window.availableModels?.find(m => m.id === selectedModel);
+                    
+                    // Show upload progress in the chat window
+                    const chatWindow = panel.querySelector('.chat-window');
+                    const progressDiv = document.createElement('div');
+                    progressDiv.className = 'message upload-progress-message';
+                    progressDiv.innerHTML = `
+                        <div class="message-content">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted">Uploading ${file.name}...</small>
+                        </div>
+                    `;
+                    chatWindow.appendChild(progressDiv);
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        
+                        const response = await fetch('/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            // Update progress bar
+                            progressDiv.querySelector('.progress-bar').style.width = '100%';
+                            progressDiv.querySelector('.progress-bar').className = 'progress-bar bg-success';
+                            
+                            // Create file preview message
+                            const fileMessage = document.createElement('div');
+                            fileMessage.className = 'message file-message';
+                            
+                            if (result.type === 'image') {
+                                // For images, show thumbnail
+                                fileMessage.innerHTML = `
+                                    <div class="message-content">
+                                        <div class="file-preview">
+                                            <img src="/file/${result.file_id}" alt="${file.name}" class="file-thumbnail">
+                                            <div class="file-info">
+                                                <div class="file-name">${file.name}</div>
+                                                <div class="file-size">${formatFileSize(file.size)}</div>
+                                            </div>
+                                        </div>
+                                        <div class="file-reference">[Image:${result.file_id}]</div>
+                                    </div>
+                                `;
+                            } else if (result.type === 'pdf') {
+                                // For PDFs, show icon and info
+                                fileMessage.innerHTML = `
+                                    <div class="message-content">
+                                        <div class="file-preview">
+                                            <i class="bi bi-file-pdf text-danger"></i>
+                                            <div class="file-info">
+                                                <div class="file-name">${file.name}</div>
+                                                <div class="file-size">${formatFileSize(file.size)}</div>
+                                            </div>
+                                        </div>
+                                        <div class="file-reference">[PDF:${result.file_id}]</div>
+                                    </div>
+                                `;
+                            }
+                            
+                            // Replace progress message with file preview
+                            progressDiv.replaceWith(fileMessage);
+                            
+                            // Add file reference to message input
+                            const messageInput = panel.querySelector('.prompt-input');
+                            const fileRef = result.type === 'pdf' ? `[PDF:${result.file_id}]` : `[Image:${result.file_id}]`;
+                            messageInput.value += (messageInput.value ? ' ' : '') + fileRef;
+                            
+                            // Scroll to show the new message
+                            chatWindow.scrollTop = chatWindow.scrollHeight;
+                        } else {
+                            throw new Error(result.error || 'Upload failed');
+                        }
+                    } catch (error) {
+                        console.error('Upload error:', error);
+                        progressDiv.querySelector('.progress-bar').className = 'progress-bar bg-danger';
+                        progressDiv.querySelector('.progress-bar').style.width = '100%';
+                        progressDiv.querySelector('small').textContent = `Error: ${error.message}`;
+                        
+                        // Remove error message after 3 seconds
+                        setTimeout(() => {
+                            progressDiv.remove();
+                        }, 3000);
+                    }
+                    
+                    // Reset file input
+                    fileInput.value = '';
+                });
             }
         }
+        
+        // Add helper function to format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Add styles for file preview
+        const filePreviewStyle = document.createElement('style');
+        filePreviewStyle.textContent = `
+            .file-message {
+                margin: 10px 0;
+            }
+            
+            .file-preview {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                margin-bottom: 5px;
+            }
+            
+            .file-thumbnail {
+                max-width: 100px;
+                max-height: 100px;
+                object-fit: contain;
+                border-radius: 4px;
+            }
+            
+            .file-info {
+                flex: 1;
+            }
+            
+            .file-name {
+                font-weight: 500;
+                margin-bottom: 2px;
+            }
+            
+            .file-size {
+                font-size: 0.8em;
+                color: #6c757d;
+            }
+            
+            .file-reference {
+                font-size: 0.8em;
+                color: #6c757d;
+                margin-top: 5px;
+            }
+            
+            .upload-progress-message {
+                margin: 10px 0;
+            }
+            
+            .upload-progress-message .progress {
+                height: 4px;
+                margin-bottom: 5px;
+            }
+            
+            .upload-progress-message small {
+                display: block;
+                text-align: center;
+            }
+        `;
+        document.head.appendChild(filePreviewStyle);
         
         // Function to show toast message
         function showToast(message, type = 'error') {
@@ -564,24 +738,47 @@
         }
 
         // Function to handle file/image upload
-        function handleUpload(event) {
-            const fileInput = event.target;
-            const panel = fileInput.closest('.chat-panel');
+        function handleUpload() {
+            const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
             
-            if (!file) return;
+            if (!file) {
+                showMessage('Please select a file to upload', 'error');
+                return;
+            }
+            
+            // Check file type
+            const fileType = file.type.toLowerCase();
+            const fileExtension = file.name.toLowerCase().split('.').pop();
+            
+            if (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(fileType) && 
+                !['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension)) {
+                showMessage('Invalid file type. Please upload a PDF or image file.', 'error');
+                return;
+            }
+            
+            // Get the upload button and show loading state
+            const uploadButton = document.getElementById('uploadButton');
+            const originalButtonContent = uploadButton.innerHTML;
+            uploadButton.disabled = true;
+            uploadButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
             
             // Create FormData and append file
             const formData = new FormData();
             formData.append('file', file);
             
-            // Show loading state
-            const uploadBtn = panel.querySelector('.upload-btn');
-            const originalContent = uploadBtn.innerHTML;
-            uploadBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-            uploadBtn.disabled = true;
+            // Show progress indicator
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'upload-progress';
+            progressDiv.innerHTML = `
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-text">Processing ${file.name}...</div>
+            `;
+            document.body.appendChild(progressDiv);
             
-            // Upload the file
+            // Send the file with progress tracking
             fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -593,31 +790,36 @@
                 return response.json();
             })
             .then(data => {
-                console.log('File uploaded:', data);
-                
-                // Add file reference to message input
-                const messageInput = panel.querySelector('.prompt-input');
-                const isImage = file.type.startsWith('image/');
-                const fileReference = isImage ? 
-                    `[Image: ${data.filename}](${data.url})` : 
-                    `[File: ${data.filename}](${data.url})`;
+                if (data.success) {
+                    // Update message input with file reference
+                    const messageInput = document.getElementById('messageInput');
+                    const fileReference = data.type === 'pdf' ? `[PDF:${data.file_id}]` : `[Image:${data.file_id}]`;
+                    messageInput.value = fileReference;
                     
-                messageInput.value = messageInput.value ? 
-                    `${messageInput.value}\n${fileReference}` : 
-                    fileReference;
-                
-                // Show success message
-                showToast(`${isImage ? 'Image' : 'File'} uploaded successfully`, 'success');
+                    // Show success message
+                    showMessage('File uploaded successfully!', 'success');
+                    
+                    // Update progress bar to complete
+                    progressDiv.querySelector('.progress-fill').style.width = '100%';
+                    progressDiv.querySelector('.progress-text').textContent = 'Upload complete!';
+                    
+                    // Remove progress bar after a delay
+                    setTimeout(() => {
+                        progressDiv.remove();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
             })
             .catch(error => {
-                console.error('Error uploading file:', error);
-                showToast(error.message || 'Failed to upload file', 'error');
+                console.error('Upload error:', error);
+                showMessage('Error uploading file: ' + error.message, 'error');
+                progressDiv.remove();
             })
             .finally(() => {
                 // Reset upload button
-                uploadBtn.innerHTML = originalContent;
-                uploadBtn.disabled = false;
-                fileInput.value = '';
+                uploadButton.disabled = false;
+                uploadButton.innerHTML = originalButtonContent;
             });
         }
         
@@ -827,47 +1029,7 @@
 
                 if (streamEnabled) {
                     // Handle streaming response
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let assistantResponse = '';
-                    let assistantMessage = null;
-
-                    while (true) {
-                        const {value, done} = await reader.read();
-                        if (done) break;
-                        
-                        const chunk = decoder.decode(value);
-                        const lines = chunk.split('\n');
-                        
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                const data = line.slice(6);
-                                if (data === '[DONE]') {
-                                    break;
-                                }
-                                try {
-                                    const parsed = JSON.parse(data);
-                                    if (parsed.choices && parsed.choices[0]) {
-                                        const content = parsed.choices[0].delta.content || '';
-                                        assistantResponse += content;
-                                        
-                                        // Create or update the assistant message
-                                        if (!assistantMessage) {
-                                            assistantMessage = createMessageWithCopy(assistantResponse, 'assistant-message');
-                                            assistantMessage.dataset.panelId = panel.id;
-                                            chatWindow.appendChild(assistantMessage);
-                                        } else {
-                                            assistantMessage.querySelector('.message-content').textContent = assistantResponse;
-                                        }
-                                        
-                                        chatWindow.scrollTop = chatWindow.scrollHeight;
-                                    }
-                                } catch (e) {
-                                    console.error('Error parsing streaming data:', e);
-                                }
-                            }
-                        }
-                    }
+                    await handleStreamResponse(response, chatWindow, panel);
                 } else {
                     // Handle non-streaming response
                     const data = await response.json();
@@ -996,18 +1158,23 @@
                 // Get all messages from the current panel
                 const messages = Array.from(currentPanel.querySelectorAll('.message'));
                 
-                // Extract the entire conversation history
+                // Extract the entire conversation history with null checks
                 let conversationHistory = [];
                 messages.forEach(message => {
-                    const isUser = message.classList.contains('user-message');
-                    const sender = isUser ? "User" : message.querySelector('.message-sender').textContent;
-                    const content = message.querySelector('.message-content').textContent;
+                    if (!message) return;
                     
-                    conversationHistory.push({
-                        role: isUser ? "user" : "assistant",
-                        sender: sender,
-                        content: content
-                    });
+                    const isUser = message.classList.contains('user-message');
+                    const contentElement = message.querySelector('.message-content');
+                    const senderElement = isUser ? null : message.querySelector('.message-sender');
+                    
+                    // Only add message if we have valid content
+                    if (contentElement && contentElement.textContent) {
+                        conversationHistory.push({
+                            role: isUser ? "user" : "assistant",
+                            sender: isUser ? "User" : (senderElement ? senderElement.textContent : "Assistant"),
+                            content: contentElement.textContent
+                        });
+                    }
                 });
                 
                 console.log(`Extracted ${conversationHistory.length} messages from conversation history`);
@@ -1022,8 +1189,10 @@
                     });
                     
                     // Add instructions for the next assistant
-                    const nextPanelTitle = nextPanel.querySelector('.panel-header h5').textContent;
-                    formattedHistory += `# Instructions\n\nYou are a ${nextPanelTitle}. Continue the conversation based on the previous context.\n`;
+                    const nextPanelTitle = nextPanel.querySelector('.panel-header h5');
+                    const nextPanelRole = nextPanelTitle ? nextPanelTitle.textContent : "Assistant";
+                    
+                    formattedHistory += `# Instructions\n\nYou are a ${nextPanelRole}. Continue the conversation based on the previous context.\n`;
                     formattedHistory += `You should build on what the previous assistant has said, but bring your own expertise and perspective.\n`;
                     formattedHistory += `Respond directly to the user's last message, taking into account the previous responses.\n\n`;
                     formattedHistory += `# Your Response\n`;
@@ -1073,7 +1242,7 @@
                             } else {
                                 console.error("Send button not available or disabled in panel:", nextPanel.id);
                             }
-                        }, 1000); // Reduced delay to 1 second for better responsiveness
+                        }, 1000);
                     } else {
                         console.error("Could not find textarea in next panel:", nextPanel.id);
                     }
@@ -1550,129 +1719,71 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
             
-            // Add sender info
-            const senderDiv = document.createElement('div');
-            senderDiv.className = 'message-sender';
+            // Check if the content contains an image or PDF reference
+            const imageMatch = content.match(/\[Image:([^\]]+)\]/);
+            const pdfMatch = content.match(/\[PDF:([^\]]+)\]/);
             
-            // Get role and posture
-            let role = 'assistant';
-            let posture = 'professional';
-            
-            if (className === 'user-message') {
-                senderDiv.textContent = 'You';
+            if (imageMatch) {
+                const imageId = imageMatch[1];
+                const imageUrl = `/file/${imageId}`;
+                
+                // Create message content with image
+                messageDiv.innerHTML = `
+                    <div class="message-content">
+                        ${content.replace(/\[Image:[^\]]+\]/, `<img src="${imageUrl}" alt="Uploaded image" class="chat-image" loading="lazy">`)}
+                    </div>
+                    <button class="copy-button" onclick="copyMessage(this)">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                `;
+            } else if (pdfMatch) {
+                const pdfId = pdfMatch[1];
+                const pdfUrl = `/file/${pdfId}`;
+                
+                // Create message content with PDF content
+                messageDiv.innerHTML = `
+                    <div class="message-content">
+                        ${content.replace(/\[PDF:[^\]]+\]/, `
+                            <div class="pdf-content">
+                                <div class="pdf-header">
+                                    <i class="bi bi-file-pdf"></i>
+                                    <span>PDF Content</span>
+                                </div>
+                                <div class="pdf-text" id="pdf-text-${pdfId}">Loading PDF content...</div>
+                            </div>
+                        `)}
+                    </div>
+                    <button class="copy-button" onclick="copyMessage(this)">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                `;
+                
+                // Fetch and display PDF content
+                fetch(pdfUrl)
+                    .then(response => response.text())
+                    .then(text => {
+                        const pdfText = document.getElementById(`pdf-text-${pdfId}`);
+                        if (pdfText) {
+                            pdfText.innerHTML = text.replace(/\n/g, '<br>');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading PDF content:', error);
+                        const pdfText = document.getElementById(`pdf-text-${pdfId}`);
+                        if (pdfText) {
+                            pdfText.innerHTML = 'Error loading PDF content';
+                        }
+                    });
             } else {
-                try {
-                    const activePanels = Array.from(document.querySelectorAll('.chat-panel')).filter(panel => 
-                        panel.querySelector('.stop-button').style.display !== 'none'
-                    );
-                    
-                    let activePanel;
-                    if (activePanels.length > 0) {
-                        activePanel = activePanels[0];
-                    } else {
-                        activePanel = document.activeElement ? 
-                            document.activeElement.closest('.chat-panel') : null;
-                        
-                        if (!activePanel) {
-                            const allPanels = Array.from(document.querySelectorAll('.chat-panel'));
-                            activePanel = allPanels[allPanels.length - 1];
-                        }
-                    }
-                    
-                    if (activePanel) {
-                        const roleSelect = activePanel.querySelector('.role-select');
-                        const postureSelect = activePanel.querySelector('.posture-select');
-                        
-                        if (roleSelect && postureSelect) {
-                            role = roleSelect.value;
-                            posture = postureSelect.value;
-                            senderDiv.textContent = `${role} (${posture})`;
-                        } else {
-                            senderDiv.textContent = 'Assistant';
-                        }
-                    } else {
-                        senderDiv.textContent = 'Assistant';
-                    }
-                } catch (e) {
-                    console.error('Error getting role/posture:', e);
-                    senderDiv.textContent = 'Assistant';
-                }
+                // Create regular message content
+                messageDiv.innerHTML = `
+                    <div class="message-content">${content}</div>
+                    <button class="copy-button" onclick="copyMessage(this)">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                `;
             }
             
-            messageDiv.appendChild(senderDiv);
-            
-            // Add content
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            
-            // Check for image/file references in the content
-            const regex = /\[(Image|File):\s+([^\]]+)\]\(([^)]+)\)/g;
-            let lastIndex = 0;
-            let match;
-            
-            while ((match = regex.exec(content)) !== null) {
-                // Add text before the match
-                if (match.index > lastIndex) {
-                    contentDiv.appendChild(document.createTextNode(content.substring(lastIndex, match.index)));
-                }
-                
-                const [fullMatch, type, filename, url] = match;
-                
-                if (type === 'Image') {
-                    // Create thumbnail container
-                    const thumbContainer = document.createElement('div');
-                    thumbContainer.className = 'image-thumbnail';
-                    
-                    // Create image element
-                    const img = document.createElement('img');
-                    img.src = url;
-                    img.alt = filename;
-                    img.title = filename;
-                    
-                    // Add click handler to open image in new tab
-                    img.onclick = () => window.open(url, '_blank');
-                    
-                    thumbContainer.appendChild(img);
-                    contentDiv.appendChild(thumbContainer);
-                } else {
-                    // Create file link
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.target = '_blank';
-                    link.textContent = `📎 ${filename}`;
-                    link.className = 'file-link';
-                    contentDiv.appendChild(link);
-                }
-                
-                lastIndex = regex.lastIndex;
-            }
-            
-            // Add remaining text
-            if (lastIndex < content.length) {
-                contentDiv.appendChild(document.createTextNode(content.substring(lastIndex)));
-            }
-            
-            messageDiv.appendChild(contentDiv);
-            
-            // Add copy button
-            const copyButton = document.createElement('button');
-            copyButton.className = 'copy-button';
-            copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
-            copyButton.title = 'Copy text';
-            copyButton.onclick = async (e) => {
-                e.stopPropagation();
-                try {
-                    await navigator.clipboard.writeText(content);
-                    copyButton.innerHTML = '<i class="bi bi-check"></i>';
-                    setTimeout(() => {
-                        copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
-                    }, 1000);
-                } catch (err) {
-                    console.error('Failed to copy text:', err);
-                }
-            };
-            
-            messageDiv.appendChild(copyButton);
             return messageDiv;
         }
 
@@ -1716,39 +1827,55 @@
             uploadBtn.title = capabilities.vision ? 'Upload Image' : 'Upload File';
         }
 
-        // Add this to your existing CSS
+        // Add styles for PDF content
         const style = document.createElement('style');
         style.textContent = `
-            .image-thumbnail {
+            .pdf-content {
                 margin: 10px 0;
-                display: inline-block;
-                max-width: 200px;
-                cursor: pointer;
+                padding: 15px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #dee2e6;
             }
             
-            .image-thumbnail img {
+            .pdf-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 10px;
+                color: #dc3545;
+                font-weight: 500;
+            }
+            
+            .pdf-header i {
+                font-size: 1.2em;
+            }
+            
+            .pdf-text {
+                white-space: pre-wrap;
+                font-family: monospace;
+                font-size: 0.9em;
+                line-height: 1.5;
+                color: #212529;
+            }
+            
+            .chat-image {
+                max-width: 300px;
+                max-height: 300px;
+                border-radius: 8px;
+                margin: 10px 0;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                display: block;
+            }
+            
+            .message-content {
+                word-wrap: break-word;
+                white-space: pre-wrap;
+            }
+            
+            .message-content img {
                 max-width: 100%;
-                border-radius: 5px;
-                border: 1px solid #ddd;
-                transition: transform 0.2s;
-            }
-            
-            .image-thumbnail img:hover {
-                transform: scale(1.05);
-            }
-            
-            .file-link {
-                display: inline-block;
-                padding: 5px 10px;
-                margin: 5px 0;
-                background: #f5f5f5;
-                border-radius: 4px;
-                text-decoration: none;
-                color: #333;
-            }
-            
-            .file-link:hover {
-                background: #e9e9e9;
+                height: auto;
             }
         `;
         document.head.appendChild(style);
@@ -1774,6 +1901,201 @@
                     }
                 });
             }
+        }
+
+        // Add styles for upload progress
+        const uploadProgressStyle = document.createElement('style');
+        uploadProgressStyle.textContent = `
+            .upload-progress {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                z-index: 1000;
+                min-width: 300px;
+            }
+            
+            .progress-bar {
+                width: 100%;
+                height: 4px;
+                background: #e9ecef;
+                border-radius: 2px;
+                overflow: hidden;
+                margin-bottom: 8px;
+            }
+            
+            .progress-fill {
+                width: 0%;
+                height: 100%;
+                background: #0d6efd;
+                transition: width 0.3s ease;
+            }
+            
+            .progress-text {
+                font-size: 0.9em;
+                color: #6c757d;
+                text-align: center;
+            }
+        `;
+        document.head.appendChild(uploadProgressStyle);
+
+        // Function to create response header
+        function createResponseHeader(type) {
+            const header = document.createElement('div');
+            header.className = 'response-header';
+            
+            const icon = document.createElement('div');
+            icon.className = 'response-header-icon';
+            
+            const text = document.createElement('div');
+            text.className = 'response-header-text thinking-dots';
+            
+            switch (type.toLowerCase()) {
+                case 'think':
+                case 'thinking':
+                    text.textContent = 'Thinking';
+                    icon.innerHTML = '<i class="bi bi-brain"></i>';
+                    break;
+                case 'analysis':
+                case 'analyzing':
+                    text.textContent = 'Analyzing';
+                    icon.innerHTML = '<i class="bi bi-graph-up"></i>';
+                    break;
+                case 'insight':
+                case 'insights':
+                    text.textContent = 'Generating insights';
+                    icon.innerHTML = '<i class="bi bi-lightbulb"></i>';
+                    break;
+                case 'response':
+                    text.textContent = 'Responding';
+                    icon.innerHTML = '<i class="bi bi-chat-dots"></i>';
+                    break;
+                case 'answer':
+                    text.textContent = 'Answering';
+                    icon.innerHTML = '<i class="bi bi-check2-circle"></i>';
+                    break;
+                default:
+                    text.textContent = 'Processing';
+                    icon.innerHTML = '<i class="bi bi-cpu"></i>';
+            }
+            
+            header.appendChild(icon);
+            header.appendChild(text);
+            return header;
+        }
+
+        // Function to handle stream response
+        async function handleStreamResponse(response, chatWindow, panel) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let assistantMessage = null;
+            let assistantResponse = '';
+            let currentHeader = null;
+            let currentResponseType = '';
+            
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+                            
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.choices && parsed.choices[0]) {
+                                    const content = parsed.choices[0].delta.content || '';
+                                    assistantResponse += content;
+                                    
+                                    // Check for response type tags
+                                    const thinkMatch = content.match(/<(think|analysis|insight|response|answer)>/i);
+                                    if (thinkMatch) {
+                                        const type = thinkMatch[1];
+                                        if (type !== currentResponseType) {
+                                            currentResponseType = type;
+                                            // Remove previous header if exists
+                                            if (currentHeader) {
+                                                currentHeader.remove();
+                                            }
+                                            // Create and add new header
+                                            currentHeader = createResponseHeader(type);
+                                            if (assistantMessage) {
+                                                assistantMessage.insertBefore(currentHeader, assistantMessage.querySelector('.message-content'));
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Create or update the assistant message
+                                    if (!assistantMessage) {
+                                        assistantMessage = createMessageWithCopy(assistantResponse, 'assistant-message');
+                                        assistantMessage.dataset.panelId = panel.id;
+                                        assistantMessage.className = 'message assistant-message response-type-container';
+                                        chatWindow.appendChild(assistantMessage);
+                                    } else {
+                                        assistantMessage.querySelector('.message-content').textContent = assistantResponse;
+                                    }
+                                    
+                                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                                    
+                                    // Handle sequential mode complete response
+                                    if (parsed.complete_response && parsed.sequential_mode) {
+                                        const processingMode = document.getElementById('processingMode').value;
+                                        if (processingMode === 'sequential') {
+                                            // Get all panels
+                                            const panels = Array.from(document.querySelectorAll('.chat-panel'));
+                                            const currentIndex = panels.indexOf(panel);
+                                            
+                                            // If there's a next panel, send the complete response to it
+                                            if (currentIndex < panels.length - 1) {
+                                                const nextPanel = panels[currentIndex + 1];
+                                                const nextPanelInput = nextPanel.querySelector('.prompt-input');
+                                                if (nextPanelInput) {
+                                                    // Set the complete response in the next panel's input
+                                                    nextPanelInput.value = assistantResponse;
+                                                    
+                                                    // Get the send button of the next panel
+                                                    const nextPanelSendButton = nextPanel.querySelector('.send-button');
+                                                    if (nextPanelSendButton) {
+                                                        // Trigger the send button click after a short delay
+                                                        setTimeout(() => {
+                                                            nextPanelSendButton.click();
+                                                        }, 500);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error parsing streaming data:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error in stream:', error);
+                const errorMessage = createMessageWithCopy('Error: ' + error.message, 'error-message');
+                chatWindow.appendChild(errorMessage);
+            } finally {
+                // Remove the header when done
+                if (currentHeader) {
+                    currentHeader.remove();
+                }
+            }
+        }
+
+        function clearChat(button) {
+            const panel = button.closest('.chat-panel');
+            const chatWindow = panel.querySelector('.chat-window');
+            chatWindow.innerHTML = '';
         }
     </script>
 </body>

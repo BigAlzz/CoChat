@@ -2,12 +2,20 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 import requests
 import os
 from werkzeug.utils import secure_filename
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 from PIL import Image
 import io
 import base64
 import json
+import time
+import numpy as np
+import torch
+import torchvision.transforms as transforms
+import pdf2image
+import pytesseract
+from pathlib import Path
+import uuid
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Add this near the top
@@ -16,8 +24,11 @@ app.secret_key = 'your-secret-key-here'  # Add this near the top
 LM_STUDIO_SERVER = 'http://192.168.50.10:3500'  # Updated to the correct IP address
 
 # Add configuration for uploads
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'heic', 'heif'}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_IMAGE_DIMENSION = 1024  # Maximum dimension for vision models
+IMAGE_QUALITY = 85  # JPEG quality setting
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -27,8 +38,14 @@ REQUEST_TIMEOUT = 60  # Increased from 30 to 60 seconds
 LONG_REQUEST_TIMEOUT = 300  # Increased from 120 to 300 seconds for model operations
 
 # Ensure upload folder exists
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Add these variables after other global variables
+MODEL_CACHE = {
+    'models': [],
+    'last_fetch': None
+}
+MODEL_CACHE_DURATION = 60  # seconds
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -82,125 +99,145 @@ def settings():
 
 @app.route('/models', methods=['GET', 'POST'])
 def models():
-    # Query LM Studio to retrieve available models
+    """Query LM Studio to retrieve available models with caching"""
     try:
-        # Get server URL from request or use default
-        if request.method == 'POST' and request.is_json:
-            data = request.json
-            server_url = data.get('server_url', LM_STUDIO_SERVER)
-        else:
-            server_url = LM_STUDIO_SERVER
-            
-        print(f"Fetching models from: {server_url}")
+        current_time = datetime.now()
         
-        # Clean up the server URL to ensure proper format
-        # Remove trailing /v1 if present as we'll add it
-        if server_url.endswith('/v1'):
-            server_url = server_url[:-3]
-        # Remove trailing slash if present
-        if server_url.endswith('/'):
-            server_url = server_url[:-1]
+        # Check if we need to refresh the cache
+        if (MODEL_CACHE['last_fetch'] is None or 
+            (current_time - MODEL_CACHE['last_fetch']).total_seconds() > MODEL_CACHE_DURATION):
             
-        # Increase timeout to 120 seconds
-        response = requests.get(f'{server_url}/v1/models', timeout=120)
-        response.raise_for_status()
-        models_data = response.json()
-        
-        if 'data' in models_data:
-            # Store full model objects including parameters
-            models_list = models_data['data']
-            # Store models in session
-            session['cached_models'] = models_list
-            return jsonify({'models': models_list})
+            # Get server URL from request or use default
+            if request.method == 'POST' and request.is_json:
+                data = request.json
+                server_url = data.get('server_url', LM_STUDIO_SERVER)
+            else:
+                server_url = LM_STUDIO_SERVER
+                
+            print(f"Fetching models from: {server_url}")
+            
+            # Clean up the server URL to ensure proper format
+            if server_url.endswith('/v1'):
+                server_url = server_url[:-3]
+            if server_url.endswith('/'):
+                server_url = server_url[:-1]
+                
+            # Fetch new models
+            response = requests.get(f'{server_url}/v1/models', timeout=120)
+            response.raise_for_status()
+            models_data = response.json()
+            
+            if 'data' in models_data:
+                # Update cache
+                MODEL_CACHE['models'] = models_data['data']
+                MODEL_CACHE['last_fetch'] = current_time
+                return jsonify({'models': models_data['data']})
+            else:
+                # If no data in response but we have cached models, return those
+                if MODEL_CACHE['models']:
+                    return jsonify({'models': MODEL_CACHE['models']})
+                return jsonify({'error': 'Unexpected response format from LM Studio'})
         else:
-            # Try to return cached models from session
-            cached_models = session.get('cached_models', [])
-            if cached_models:
-                return jsonify({'models': cached_models})
-            return jsonify({'error': f'Unexpected response format from LM Studio'})
+            # Return cached models if they're still fresh
+            print("Returning cached models")
+            return jsonify({'models': MODEL_CACHE['models']})
+            
     except requests.exceptions.ConnectionError as e:
-        # Return cached models on connection error
         print(f"Connection error fetching models: {str(e)}")
-        cached_models = session.get('cached_models', [])
-        if cached_models:
-            return jsonify({'models': cached_models})
+        # Return cached models on connection error if available
+        if MODEL_CACHE['models']:
+            return jsonify({'models': MODEL_CACHE['models']})
         return jsonify({'error': 'Could not connect to LM Studio'})
     except requests.exceptions.RequestException as e:
         print(f"Request exception fetching models: {str(e)}")
-        cached_models = session.get('cached_models', [])
-        if cached_models:
-            return jsonify({'models': cached_models})
+        # Return cached models on request error if available
+        if MODEL_CACHE['models']:
+            return jsonify({'models': MODEL_CACHE['models']})
         return jsonify({'error': f'Error: {str(e)}'})
     except Exception as e:
         print(f"Unexpected error fetching models: {str(e)}")
+        # Return cached models on unexpected error if available
+        if MODEL_CACHE['models']:
+            return jsonify({'models': MODEL_CACHE['models']})
         return jsonify({'error': f'Unexpected error: {str(e)}'})
 
-def process_image_reference(match):
-    """Process an image reference and return base64 encoded image"""
+def optimize_image(img, max_size=MAX_IMAGE_DIMENSION):
+    """Optimize image for vision models while maintaining quality"""
     try:
-        filename = match.group(1)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Convert to RGB if necessary (including RGBA)
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            # Create a white background
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            # Paste the image using alpha channel as mask
+            background.paste(img, mask=img.split()[-1])
+            img = background
+        elif img.mode not in ('RGB', 'RGBA'):
+            img = img.convert('RGB')
         
-        if not os.path.exists(filepath):
-            print(f"Image file not found: {filepath}")
-            return None
-            
-        # Open and process image
-        with Image.open(filepath) as img:
-            # Convert to RGB if necessary
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Calculate new dimensions while maintaining aspect ratio
-            max_size = 512  # Reduced from 768 to 512
-            ratio = min(max_size / img.width, max_size / img.height)
-            new_size = (int(img.width * ratio), int(img.height * ratio))
-            
-            # Resize image if larger than max size
-            if img.size[0] > max_size or img.size[1] > max_size:
-                img = img.resize(new_size, Image.Resampling.LANCZOS)
-            
-            # Save to bytes with reduced quality
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='JPEG', quality=85, optimize=True)
-            img_byte_arr = img_byte_arr.getvalue()
-            
-            # Convert to base64
-            base64_image = base64.b64encode(img_byte_arr).decode('utf-8')
-            
-            # Return the image wrapped in HTML tag
-            return f'<image>{base64_image}</image>'
-            
+        # Calculate new dimensions while maintaining aspect ratio
+        ratio = min(max_size / img.width, max_size / img.height)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        
+        # Resize image if larger than max size
+        if img.size[0] > max_size or img.size[1] > max_size:
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        
+        # Optimize image quality and memory usage
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG', quality=IMAGE_QUALITY, optimize=True)
+        img_byte_arr.seek(0)
+        
+        # Clear memory
+        img.close()
+        
+        return Image.open(img_byte_arr)
     except Exception as e:
-        print(f"Error processing image: {str(e)}")
-        return None
+        print(f"Error optimizing image: {e}")
+        raise
 
 def process_image_references(message):
     """Process any image references in the message and return processed message"""
     try:
-        # Check for image references in the format [Image: filename](path)
-        image_pattern = r'\[Image:\s+([^\]]+)\]\(([^)]+)\)'
+        # Check for image references in the format [Image:image_id]
+        image_pattern = r'\[Image:([^\]]+)\]'
         processed_message = message
-        image_references = []
         
         # Process all image references
         for match in re.finditer(image_pattern, message):
-            image_data = process_image_reference(match)
-            if image_data:
-                image_references.append(image_data)
-                # Replace the image reference with a placeholder
-                processed_message = processed_message.replace(match.group(0), f'[Image {len(image_references)}]')
-        
-        # If we have images, append them to the message
-        if image_references:
-            processed_message += "\n\nImages:\n" + "\n".join(image_references)
+            image_id = match.group(1)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{image_id}.png")
+            
+            if os.path.exists(filepath):
+                try:
+                    # Open and process image
+                    with Image.open(filepath) as img:
+                        # Optimize image for vision models
+                        optimized_img = optimize_image(img)
+                        
+                        # Save to bytes with optimized quality
+                        img_byte_arr = io.BytesIO()
+                        optimized_img.save(img_byte_arr, format='JPEG', quality=IMAGE_QUALITY, optimize=True)
+                        img_byte_arr = img_byte_arr.getvalue()
+                        
+                        # Convert to base64
+                        base64_image = base64.b64encode(img_byte_arr).decode('utf-8')
+                        
+                        # Replace the image reference with a placeholder
+                        processed_message = processed_message.replace(match.group(0), f'[Image {base64_image}]')
+                        
+                        # Clear memory
+                        optimized_img.close()
+                except Exception as e:
+                    print(f"Error processing image {image_id}: {e}")
+                    # Replace failed image with error message
+                    processed_message = processed_message.replace(match.group(0), '[Image processing failed]')
             
         return processed_message
     except Exception as e:
-        print(f"Error processing image references: {e}")
-        return message
+        print(f"Error in process_image_references: {e}")
+        return message  # Return original message if processing fails
 
-def prepare_prompt(message, mode, posture, role):
+def prepare_prompt(message, mode, posture, role, previous_messages=None):
     """Prepare the prompt based on mode, posture, and role"""
     try:
         # Base system message
@@ -208,9 +245,27 @@ def prepare_prompt(message, mode, posture, role):
         
         # Add mode-specific instructions
         if mode == 'sequential':
-            system_message += "You are part of a sequential conversation where each assistant builds upon previous responses. "
+            system_message += (
+                "You are part of a sequential conversation where each assistant builds upon previous responses. "
+                "Structure your response in this format:\n"
+                "1. First, analyze the previous response (if any) and show your thinking process with <analysis>your analysis here</analysis>\n"
+                "2. Then, provide your own insights with <insights>your insights here</insights>\n"
+                "3. Finally, give your response with <response>your detailed response here</response>\n"
+                "Make sure to acknowledge and build upon any previous responses."
+            )
         elif mode == 'parallel':
-            system_message += "You are part of a parallel conversation where multiple assistants provide different perspectives. "
+            system_message += (
+                "You are part of a parallel conversation where multiple assistants provide different perspectives. "
+                "Structure your response in this format:\n"
+                "<perspective>your unique perspective</perspective>\n"
+                "<response>your detailed response</response>"
+            )
+        else:
+            system_message += (
+                "Structure your response in this format:\n"
+                "<think>your thought process</think>\n"
+                "<answer>your clear and structured response</answer>"
+            )
         
         # Add role-specific instructions
         if role == 'researcher':
@@ -228,13 +283,30 @@ def prepare_prompt(message, mode, posture, role):
         elif posture == 'friendly':
             system_message += "Maintain a friendly and approachable tone. "
         
-        # Combine system message with user message
-        prompt = f"{system_message}\n\nUser message: {message}"
+        # Prepare messages array
+        messages = [{"role": "system", "content": system_message}]
         
-        return prompt
+        # Add previous messages for sequential mode
+        if mode == 'sequential' and previous_messages:
+            for prev_msg in previous_messages:
+                if prev_msg.get('type') == 'question':
+                    messages.append({
+                        "role": "user",
+                        "content": prev_msg.get('content', '')
+                    })
+                else:
+                    messages.append({
+                        "role": "assistant",
+                        "content": prev_msg.get('content', '')
+                    })
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        return messages
     except Exception as e:
         print(f"Error preparing prompt: {e}")
-        return message
+        return [{"role": "user", "content": message}]
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -252,6 +324,7 @@ def chat():
         mode = data.get('mode', 'individual')
         posture = data.get('posture', 'neutral')
         role = data.get('role', 'assistant')
+        previous_messages = data.get('previous_messages', [])
 
         if not message or not model:
             return jsonify({'error': 'Message and model are required'}), 400
@@ -274,16 +347,20 @@ def chat():
             return jsonify({"error": "Cannot connect to LM Studio server. Please check your connection and server settings."}), 503
 
         # Process any image references in the message
-        processed_message = process_image_references(message)
+        try:
+            processed_message = process_image_references(message)
+        except Exception as e:
+            print(f"Error processing image references: {e}")
+            processed_message = message
 
-        # Prepare the prompt based on mode, posture, and role
-        prompt = prepare_prompt(processed_message, mode, posture, role)
+        # Prepare the messages array with system message and conversation history
+        messages = prepare_prompt(processed_message, mode, posture, role, previous_messages)
 
         # Prepare the request to LM Studio
         headers = {'Content-Type': 'application/json'}
         payload = {
             'model': model,
-            'messages': [{'role': 'user', 'content': prompt}],
+            'messages': messages,
             'temperature': temperature,
             'max_tokens': max_tokens,
             'top_p': top_p,
@@ -294,10 +371,12 @@ def chat():
         }
 
         print(f"Sending request to {server_url}/v1/chat/completions")
-        print(f"Request payload: {json.dumps(payload, indent=2)}")
 
         if stream:
             def generate():
+                full_response = ""  # Track the complete response
+                response_id = str(uuid.uuid4())  # Generate unique ID for this response
+                
                 try:
                     response = requests.post(
                         f"{server_url}/v1/chat/completions",
@@ -319,12 +398,56 @@ def chat():
                                 if line.startswith('data: '):
                                     data = line[6:]
                                     if data == '[DONE]':
+                                        if mode == 'sequential':
+                                            # Send the complete response for sequential mode
+                                            complete_data = {
+                                                'id': f'chatcmpl-{response_id}',
+                                                'object': 'chat.completion.chunk',
+                                                'created': int(time.time()),
+                                                'model': model,
+                                                'choices': [{
+                                                    'index': 0,
+                                                    'delta': {
+                                                        'role': 'assistant',
+                                                        'content': full_response
+                                                    },
+                                                    'finish_reason': 'stop'
+                                                }],
+                                                'complete_response': True,  # Flag for frontend
+                                                'sequential_mode': True     # Additional flag for sequential mode
+                                            }
+                                            yield f"data: {json.dumps(complete_data)}\n\n"
                                         yield 'data: [DONE]\n\n'
                                     else:
-                                        yield f"data: {data}\n\n"
+                                        try:
+                                            json_data = json.loads(data)
+                                            if 'choices' in json_data and json_data['choices']:
+                                                delta = json_data['choices'][0].get('delta', {})
+                                                if 'content' in delta:
+                                                    content = delta['content']
+                                                    full_response += content  # Accumulate the response
+                                                    
+                                                    # Format response to match LM Studio's format
+                                                    response_data = {
+                                                        'id': f'chatcmpl-{response_id}',
+                                                        'object': 'chat.completion.chunk',
+                                                        'created': int(time.time()),
+                                                        'model': model,
+                                                        'choices': [{
+                                                            'index': 0,
+                                                            'delta': {
+                                                                'content': content
+                                                            },
+                                                            'finish_reason': None
+                                                        }]
+                                                    }
+                                                    yield f"data: {json.dumps(response_data)}\n\n"
+                                        except json.JSONDecodeError as e:
+                                            print(f"Error parsing JSON: {data}")
+                                            yield f"data: {json.dumps({'error': f'JSON parse error: {str(e)}'})}\n\n"
                             except Exception as e:
                                 print(f"Error processing line: {e}")
-                                continue
+                                yield f"data: {json.dumps({'error': f'Stream processing error: {str(e)}'})}\n\n"
                 except Exception as e:
                     print(f"Error in stream generation: {e}")
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -362,15 +485,27 @@ def summarize():
     summary_type = request.json.get('summary_type', 'concise')  # Default to concise
     
     if not conversation:
+        print("Error: No conversation provided")
         return jsonify({'error': 'No conversation provided'})
     
+    if not model:
+        print("Error: No model specified")
+        return jsonify({'error': 'No model specified'})
+    
+    print(f"Generating {summary_type} summary using model: {model}")
+    print(f"Conversation length: {len(conversation)} messages")
+    
     # Format the conversation for the summarizer
-    conversation_text = "\n\n".join([
-        f"Panel {msg['panel']} - {msg['panelTitle']}\n"
-        f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
-        f"{msg['content']}"
-        for msg in conversation
-    ])
+    try:
+        conversation_text = "\n\n".join([
+            f"Panel {msg['panel']} - {msg['panelTitle']}\n"
+            f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
+            f"{msg['content']}"
+            for msg in conversation
+        ])
+    except KeyError as e:
+        print(f"Error formatting conversation: {str(e)}")
+        return jsonify({'error': f'Invalid conversation format: missing {str(e)}'})
     
     # Define different summary prompts based on type
     summary_prompts = {
@@ -408,6 +543,7 @@ def summarize():
     try:
         # Get the current server URL from session or use default
         server_url = session.get('lm_studio_url', LM_STUDIO_SERVER)
+        print(f"Using server URL: {server_url}")
         
         # Clean up the server URL
         if server_url.endswith('/v1'):
@@ -415,6 +551,8 @@ def summarize():
         if server_url.endswith('/'):
             server_url = server_url[:-1]
             
+        print(f"Making request to: {server_url}/v1/chat/completions")
+        
         response = requests.post(
             f'{server_url}/v1/chat/completions',
             json={
@@ -424,20 +562,32 @@ def summarize():
             },
             timeout=120  # Add timeout
         )
+        
+        print(f"Response status code: {response.status_code}")
         response.raise_for_status()
+        
         summary_data = response.json()
+        print(f"Response data: {json.dumps(summary_data, indent=2)}")
         
         if 'choices' in summary_data and len(summary_data['choices']) > 0:
             summary = summary_data['choices'][0]['message']['content']
+            print("Successfully generated summary")
         else:
-            summary = "Error: Could not generate summary"
+            print("Error: No choices in response")
+            summary = "Error: Could not generate summary - no response from model"
             
     except requests.exceptions.Timeout:
-        summary = "Error: Request timed out while generating summary"
-    except requests.exceptions.ConnectionError:
-        summary = "Error: Could not connect to the language model server. Please check your connection."
+        print("Error: Request timed out")
+        summary = "Error: Request timed out while generating summary. Please try again."
+    except requests.exceptions.ConnectionError as e:
+        print(f"Connection error: {str(e)}")
+        summary = "Error: Could not connect to the language model server. Please check your connection and server status."
     except requests.exceptions.RequestException as e:
+        print(f"Request error: {str(e)}")
         summary = f'Error generating summary: {str(e)}'
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        summary = f'Unexpected error while generating summary: {str(e)}'
     
     return jsonify({'summary': summary})
 
@@ -467,8 +617,42 @@ def uploaded_file(filename):
     """Serve uploaded files"""
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+def process_image_with_gpu(image):
+    """Process image using GPU if available"""
+    try:
+        # Check if CUDA is available
+        if torch.cuda.is_available():
+            # Convert PIL image to tensor
+            transform = transforms.ToTensor()
+            img_tensor = transform(image).unsqueeze(0).cuda()
+            
+            # Process on GPU
+            # Example: resize using GPU
+            if img_tensor.size(2) > 512 or img_tensor.size(3) > 512:
+                img_tensor = torch.nn.functional.interpolate(
+                    img_tensor, 
+                    size=(512, 512), 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+            
+            # Convert back to PIL image
+            img_array = img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            img_array = (img_array * 255).astype(np.uint8)
+            return Image.fromarray(img_array)
+        else:
+            # Fallback to CPU processing
+            if image.size[0] > 512 or image.size[1] > 512:
+                ratio = min(512 / image.width, 512 / image.height)
+                new_size = (int(image.width * ratio), int(image.height * ratio))
+                return image.resize(new_size, Image.Resampling.LANCZOS)
+            return image
+    except Exception as e:
+        print(f"GPU processing error: {e}")
+        return image
+
 @app.route('/upload', methods=['POST'])
-def upload():
+def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
     
@@ -476,31 +660,178 @@ def upload():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     
-    if file and allowed_file(file.filename):
-        # Secure the filename and add timestamp
-        filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-        filename = timestamp + filename
-        
-        # Save the file
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        # Generate file URL
-        file_url = url_for('uploaded_file', filename=filename, _external=True)
-        
-        # Check if file is an image
-        is_image = file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))
-        
-        return jsonify({
-            'message': 'File uploaded successfully',
-            'filename': filename,
-            'path': file_path,
-            'url': file_url,
-            'is_image': is_image
-        })
+    # Check file extension
+    file_extension = file.filename.lower().split('.')[-1]
+    if file_extension not in ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'Invalid file type. Allowed types: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
     
-    return jsonify({'error': 'File type not allowed'}), 400
+    try:
+        # Create a unique filename
+        filename = f"file_{int(time.time())}_{os.urandom(4).hex()}"
+        
+        # Handle PDF files
+        if file_extension == 'pdf':
+            # Save PDF temporarily
+            pdf_path = os.path.join(UPLOAD_FOLDER, f"{filename}.pdf")
+            file.save(pdf_path)
+            
+            try:
+                # Process PDF with OCR model
+                extracted_text = process_pdf(pdf_path)
+                if extracted_text:
+                    # Save extracted text
+                    text_path = os.path.join(UPLOAD_FOLDER, f"{filename}.txt")
+                    with open(text_path, 'w', encoding='utf-8') as f:
+                        f.write(extracted_text)
+                    
+                    # Clean up PDF file
+                    os.remove(pdf_path)
+                    
+                    return jsonify({
+                        'success': True,
+                        'filename': f"{filename}.txt",
+                        'file_id': filename,
+                        'type': 'pdf',
+                        'content': extracted_text
+                    })
+                else:
+                    return jsonify({'error': 'Failed to process PDF'}), 500
+            except Exception as e:
+                print(f"Error processing PDF: {e}")
+                return jsonify({'error': f'Error processing PDF: {str(e)}'}), 500
+            finally:
+                # Clean up PDF file if it still exists
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+        
+        # Handle image files
+        else:
+            try:
+                # Process image with optimization
+                with Image.open(file) as img:
+                    # Optimize image for vision models
+                    optimized_img = optimize_image(img)
+                    
+                    # Save processed image as PNG to preserve quality
+                    img_path = os.path.join(UPLOAD_FOLDER, f"{filename}.png")
+                    optimized_img.save(img_path, format='PNG', optimize=True)
+                    
+                    # Get image dimensions for response
+                    width, height = optimized_img.size
+                    
+                    # Clear memory
+                    optimized_img.close()
+                    
+                    return jsonify({
+                        'success': True,
+                        'filename': f"{filename}.png",
+                        'file_id': filename,
+                        'type': 'image',
+                        'dimensions': {
+                            'width': width,
+                            'height': height
+                        }
+                    })
+            except Exception as e:
+                print(f"Error processing image: {e}")
+                return jsonify({'error': f'Error processing image: {str(e)}'}), 500
+                
+    except Exception as e:
+        print(f"Error in upload_file: {e}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+def process_pdf(file_path):
+    """Process PDF file using Qwen2-VL-OCR model"""
+    try:
+        # Convert PDF to images with optimized settings
+        images = pdf2image.convert_from_path(
+            file_path,
+            dpi=200,  # Reduced DPI for faster processing
+            thread_count=2,  # Use multiple threads
+            grayscale=True,  # Convert to grayscale for faster OCR
+            size=(None, 1000)  # Limit height to 1000px
+        )
+        
+        # Process each page with the OCR model
+        extracted_text = []
+        for i, image in enumerate(images):
+            # Convert PIL image to base64 with optimization
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='PNG', optimize=True)
+            img_byte_arr = img_byte_arr.getvalue()
+            base64_image = base64.b64encode(img_byte_arr).decode('utf-8')
+            
+            # Prepare the OCR prompt
+            ocr_prompt = "Please perform OCR on this image and extract all text. Format the output clearly with proper spacing and line breaks. Include any tables, lists, or structured content while maintaining their format."
+            
+            # Create the message with the image
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": ocr_prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # Get server URL from session or use default
+            server_url = session.get('lm_studio_url', LM_STUDIO_SERVER)
+            
+            # Clean up the server URL
+            if server_url.endswith('/v1'):
+                server_url = server_url[:-3]
+            if server_url.endswith('/'):
+                server_url = server_url[:-1]
+            
+            # Send request to the model with optimized settings
+            response = requests.post(
+                f"{server_url}/v1/chat/completions",
+                json={
+                    "model": "qwen2-vl-ocr-2b-instruct-i1",
+                    "messages": messages,
+                    "temperature": 0.1,  # Low temperature for more accurate OCR
+                    "max_tokens": 4000
+                },
+                timeout=60  # Reduced timeout for faster feedback
+            )
+            
+            if response.ok:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    page_text = result['choices'][0]['message']['content']
+                    extracted_text.append(f"Page {i+1}:\n{page_text}")
+                else:
+                    extracted_text.append(f"Page {i+1}: Error extracting text")
+            else:
+                error_msg = response.text if response.text else "Unknown error"
+                print(f"OCR model error: {error_msg}")
+                extracted_text.append(f"Page {i+1}: Error processing with OCR model - {error_msg}")
+        
+        return "\n\n".join(extracted_text)
+    except Exception as e:
+        print(f"PDF processing error: {e}")
+        return None
+
+@app.route('/file/<file_id>')
+def get_file(file_id):
+    try:
+        # Find the file
+        for filename in os.listdir(UPLOAD_FOLDER):
+            if file_id in filename:
+                return send_from_directory(UPLOAD_FOLDER, filename)
+        return "File not found", 404
+    except Exception as e:
+        print(f"Error retrieving file: {e}")
+        return "Error retrieving file", 500
 
 @app.route('/save_settings', methods=['POST'])
 def save_settings():
