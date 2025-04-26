@@ -12,7 +12,8 @@
     <div class="app-header">
         <div class="app-logo">CoChat</div>
         <div class="header-controls">
-            <button class="header-btn" id="muteButton"><i class="bi bi-volume-up"></i></button>
+            <!-- Remove the speaker icon button from navigation -->
+            <!-- <button class="header-btn" id="muteButton"><i class="bi bi-volume-up"></i></button> -->
             <button class="header-btn" id="exportButton" title="Generate Summary"><i class="bi bi-card-text"></i></button>
             <div class="position-relative dropdown">
                 <button class="header-btn d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -20,10 +21,10 @@
                     <i class="bi bi-chevron-down"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-dark">
-                    <li><a class="dropdown-item" href="#" data-mode="individual">Individual</a></li>
-                    <li><a class="dropdown-item" href="#" data-mode="sequential">Sequential</a></li>
-                    <li><a class="dropdown-item" href="#" data-mode="parallel">Parallel</a></li>
-                    <li><a class="dropdown-item" href="#" data-mode="cyclic">Cyclic</a></li>
+                    <li><a class="dropdown-item" href="#" data-mode="individual"><i class="bi bi-person me-2"></i>Individual</a></li>
+                    <li><a class="dropdown-item" href="#" data-mode="sequential"><i class="bi bi-list-ol me-2"></i>Sequential</a></li>
+                    <li><a class="dropdown-item" href="#" data-mode="parallel"><i class="bi bi-columns-gap me-2"></i>Parallel</a></li>
+                    <li><a class="dropdown-item" href="#" data-mode="cyclic"><i class="bi bi-arrow-repeat me-2"></i>Cyclic</a></li>
                 </ul>
                 </div>
             <button class="add-panel-btn" id="addAssistant"><i class="bi bi-plus"></i> Add Panel</button>
@@ -117,6 +118,13 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="addServerEntry()">
                             <i class="bi bi-plus-circle"></i> Add Server
                         </button>
+                    </div>
+                    <div class="mb-3 d-flex align-items-center justify-content-between">
+                        <label class="form-label mb-0">Theme</label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="themeToggle">
+                            <label class="form-check-label" for="themeToggle" id="themeToggleLabel">Night</label>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -245,6 +253,38 @@
             const addPanelButton = document.getElementById('addAssistant');
             if (addPanelButton) {
                 addPanelButton.onclick = addAssistant;
+            }
+            
+            // Theme toggle logic
+            const themeToggle = document.getElementById('themeToggle');
+            const themeToggleLabel = document.getElementById('themeToggleLabel');
+            const root = document.documentElement;
+            const body = document.body;
+            function applyTheme(theme) {
+                if (theme === 'dark') {
+                    root.classList.add('dark-mode');
+                    root.classList.remove('light-mode');
+                    body.classList.add('dark-mode');
+                    body.classList.remove('light-mode');
+                    if (themeToggle) themeToggle.checked = true;
+                    if (themeToggleLabel) themeToggleLabel.textContent = 'Night';
+                } else {
+                    root.classList.remove('dark-mode');
+                    root.classList.add('light-mode');
+                    body.classList.remove('dark-mode');
+                    body.classList.add('light-mode');
+                    if (themeToggle) themeToggle.checked = false;
+                    if (themeToggleLabel) themeToggleLabel.textContent = 'Day';
+                }
+            }
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            applyTheme(savedTheme);
+            if (themeToggle) {
+                themeToggle.addEventListener('change', function() {
+                    const theme = this.checked ? 'dark' : 'light';
+                    localStorage.setItem('theme', theme);
+                    applyTheme(theme);
+                });
             }
             
             // Rest of your initialization code...
