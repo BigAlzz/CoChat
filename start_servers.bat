@@ -14,7 +14,7 @@ timeout /t 2 /nobreak > nul
 
 :: Start the frontend server
 cd frontend
-start "CoChat Frontend" cmd /c "npm run dev"
+start "CoChat Frontend" cmd /c "npm run dev -- --port 5000"
 cd ..
 
 echo Servers started successfully!

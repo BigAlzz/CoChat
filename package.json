@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "@types/node": "^22.15.2",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2"
+  },
+  "dependencies": {
+    "@mantine/core": "^7.17.5",
+    "@tabler/icons-react": "^3.31.0"
+  }
+}

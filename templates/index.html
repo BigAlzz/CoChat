@@ -46,7 +46,7 @@
                     <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                         <i class="bi bi-trash"></i>
                     </button>
-                    <button class="btn-close" onclick="closePanel(this)" title="Close panel">
+                    <button class="btn-close" onclick="removeAssistant(this.closest('.chat-panel').id)" title="Close panel">
                         <i class="bi bi-x-lg"></i>
                     </button>
                 </div>
@@ -469,7 +469,7 @@
                         <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                             <i class="bi bi-trash"></i>
                         </button>
-                        <button class="btn-close" onclick="closePanel(this)" title="Close panel">
+                        <button class="btn-close" onclick="removeAssistant(this.closest('.chat-panel').id)" title="Close panel">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>

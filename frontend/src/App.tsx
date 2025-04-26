@@ -649,9 +649,9 @@ function App() {
           </AppShell.Header>
 
           <AppShell.Main>
-            <SimpleGrid cols={chatPanels.length <= 3 ? chatPanels.length : 3}>
+            <Box style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%' }}>
               {chatPanels.map((panel, index) => (
-                <Box key={panel.id} h={getPanelHeight()}>
+                <Box key={panel.id} h={getPanelHeight()} style={{ flex: `0 0 ${100 / chatPanels.length}%`, maxWidth: `${100 / chatPanels.length}%`, minWidth: 0, boxSizing: 'border-box', height: '100%' }}>
                   <ChatPanel
                     title={`Panel ${panel.id}`}
                     isAutonomous={false}
@@ -674,7 +674,7 @@ function App() {
                   />
                 </Box>
               ))}
-            </SimpleGrid>
+            </Box>
           </AppShell.Main>
         </AppShell>
 

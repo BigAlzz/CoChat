@@ -356,7 +356,7 @@ const ChatPanel = ({
         content,
         role: 'user'
       };
-      setMessages(prev => [...prev, newMessage]);
+      setMessages((prev: ChatMessage[]) => [...prev, newMessage]);
 
       // Record the message if needed
       if (onRecordMessage) {
@@ -373,7 +373,7 @@ const ChatPanel = ({
         role: 'assistant',
         assistantName: `${selectedRole} (${selectedPosture})`
       };
-      setMessages(prev => [...prev, thinkingMessage]);
+      setMessages((prev: ChatMessage[]) => [...prev, thinkingMessage]);
 
       const response = await fetch('http://192.168.50.89:1234/v1/chat/completions', {
         method: 'POST',
@@ -400,7 +400,7 @@ const ChatPanel = ({
       }
 
       let currentSentence = '';
-      let readTimeout: NodeJS.Timeout | null = null;
+      let readTimeout: any = null;
 
       const readSentence = (sentence: string) => {
         if (autoReadEnabled && !isMuted && sentence.trim()) {
@@ -457,7 +457,7 @@ const ChatPanel = ({
                 setStreamingContent(accumulatedResponse);
                 
                 // Update the last message with the accumulated response
-                setMessages(prev => {
+                setMessages((prev: ChatMessage[]) => {
                   const newMessages = [...prev];
                   const lastMessage = newMessages[newMessages.length - 1];
                   if (lastMessage && lastMessage.role === 'assistant') {
@@ -527,7 +527,7 @@ const ChatPanel = ({
       console.error('Error in chat:', error);
       setError(error instanceof Error ? error.message : 'An error occurred during the chat');
       // Remove the thinking message on error
-      setMessages(prev => prev.slice(0, -1));
+      setMessages((prev: ChatMessage[]) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
     }
@@ -540,7 +540,7 @@ const ChatPanel = ({
   };
 
   const handleDeleteMessage = (messageId: number) => {
-    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+    setMessages((prev: ChatMessage[]) => prev.filter((msg: ChatMessage) => msg.id !== messageId));
   };
 
   const handleClearChat = () => {
@@ -751,15 +751,15 @@ const ChatPanel = ({
         minHeight: 0,
         marginBottom: 0
       }}
-      onDragOver={(e) => {
+      onDragOver={(e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.currentTarget.style.boxShadow = '0 0 10px #39ff14';
         e.dataTransfer.dropEffect = 'copy';
       }}
-      onDragLeave={(e) => {
+      onDragLeave={(e: React.DragEvent<HTMLDivElement>) => {
         e.currentTarget.style.boxShadow = '';
       }}
-      onDrop={async (e) => {
+      onDrop={async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.currentTarget.style.boxShadow = '';
         const content = e.dataTransfer.getData('text/plain');
@@ -781,7 +781,7 @@ const ChatPanel = ({
             <Title order={3}>
               {selectedRole && selectedPosture ? `${selectedPosture} ${selectedRole}` : title}
               <Text size="xs" c="dimmed" style={{ marginLeft: '0.5rem' }}>
-                ({mode} mode{mode === 'iteration' ? ` - Cycle ${currentCycle + 1}` : ''})
+                ({mode} mode)
               </Text>
             </Title>
             <Group gap="xs">
@@ -871,17 +871,25 @@ const ChatPanel = ({
             }}
           >
             <Stack gap="xs" p="md" style={{ flex: 1 }}>
-              {messages.map((message, index) => (
-                <Box key={`${message.id}-${index}`}>
-                  <Message
-                    content={message.content}
-                    role={message.role}
-                    assistantName={message.assistantName}
-                    onSpeechInput={handleSpeechInput}
-                    onDelete={() => handleDeleteMessage(message.id)}
-                  />
-                </Box>
-              ))}
+              {messages.map((message, index) => {
+                // Determine if this is the last assistant message and streaming is active
+                const isLastAssistant =
+                  message.role === 'assistant' &&
+                  index === messages.length - 1 &&
+                  isLoading && streamingContent !== '';
+                return (
+                  <Box key={`${message.id}-${index}`}>
+                    <Message
+                      content={message.content}
+                      role={message.role}
+                      assistantName={message.assistantName}
+                      onSpeechInput={handleSpeechInput}
+                      onDelete={() => handleDeleteMessage(message.id)}
+                      isThinking={isLastAssistant}
+                    />
+                  </Box>
+                );
+              })}
               {isLoading && (
                 <Paper p="md" style={{ 
                   backgroundColor: 'var(--mantine-color-dark-6)',
