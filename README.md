@@ -1,77 +1,57 @@
-# CoChat - Collaborative AI Chat Interface
+# CoChat
 
-CoChat is a web-based collaborative chat interface that allows multiple AI assistants to work together in different modes: individual, sequential, and parallel. It supports various AI models and provides features like file uploads, image analysis, and conversation summarization.
+CoChat is a multi-panel chat interface for interacting with Large Language Models (LLMs) such as those served by LM Studio. It features a Flask backend and a modern JavaScript/CSS frontend, allowing you to connect to one or more LLM servers, manage multiple chat panels, and experiment with different models and roles in parallel.
 
 ## Features
+- Connect to one or more LLM servers (e.g., LM Studio)
+- Multi-panel chat: run several conversations in parallel
+- Model selection per panel
+- Customizable roles and postures
+- Modern, dark-themed UI
+- Settings modal for server management
 
-- Multiple AI assistant panels
-- Support for different chat modes (Individual, Sequential, Parallel)
-- File and image upload capabilities
-- Real-time streaming responses
-- Conversation summarization
-- Customizable assistant roles and postures
-- Model selection and management
-- Copy-to-clipboard functionality
-- Responsive design
+## Setup
 
-## Prerequisites
+### Prerequisites
+- Python 3.8+
+- Node.js (for advanced frontend development, optional)
+- [LM Studio](https://lmstudio.ai/) or another OpenAI-compatible LLM server
 
-- Python 3.8 or higher
-- Flask
-- LM Studio server running locally or on a network
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/BigAlzz/CoChat.git
-cd cochat
-```
-
+### Installation
+1. Clone this repository:
+   ```sh
+   git clone https://github.com/BigAlzz/CoChat.git
+   cd CoChat
+   ```
 2. Create and activate a virtual environment:
-```bash
-python -m venv Venv
-.\Venv\Scripts\activate  # On Windows
-source Venv/bin/activate  # On Unix/MacOS
-```
-
+   ```sh
+   python -m venv Venv
+   # On Windows:
+   .\Venv\Scripts\activate
+   # On macOS/Linux:
+   source Venv/bin/activate
+   ```
 3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Create an uploads directory:
-```bash
-mkdir uploads
-```
-
-## Configuration
-
-1. Start your LM Studio server
-2. Update the server URL in the application settings if needed (default: http://192.168.50.10:3500)
+   ```sh
+   pip install -r requirements.txt
+   ```
+4. Start the Flask server:
+   ```sh
+   python app.py
+   ```
+5. Open your browser and go to [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
 ## Usage
-
-1. Start the Flask server:
-```bash
-.\start_server.bat  # On Windows
-./start_server.sh   # On Unix/MacOS
-```
-
-2. Open your browser and navigate to `http://127.0.0.1:5000`
-
-3. Select your desired AI model and start chatting!
-
-## Chat Modes
-
-- **Individual**: Each assistant works independently
-- **Sequential**: Assistants process messages in sequence, building on previous responses
-- **Parallel**: All assistants process messages simultaneously
+- Use the settings (gear icon) to add your LLM server URLs (e.g., LM Studio at `http://localhost:1234` or your network address)
+- Add new chat panels to run multiple conversations
+- Select models, roles, and postures per panel
+- Interact with your LLMs in a flexible, multi-agent environment
 
 ## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+Pull requests and issues are welcome! Please:
+- Fork the repository
+- Create a new branch for your feature or fix
+- Submit a pull request with a clear description
 
 ## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License
