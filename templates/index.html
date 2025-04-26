@@ -1682,22 +1682,35 @@
                     const contentDiv = document.createElement('div');
                     contentDiv.className = 'summary-content';
                     
-                    // Format based on summary type
                     const lines = data.summary.split('\n');
-                    const formattedLines = lines.map(line => {
-                        if (!line.trim()) return '';
-                        
-                        if (summaryType === 'bullet' && (line.trim().startsWith('-') || line.trim().startsWith('•'))) {
-                            return `<div class="bullet-point">${line}</div>`;
-                        }
-                        
-                        if (line.match(/^[A-Z][\w\s]+:/)) {
-                            return `<div class="section-header">${line}</div>`;
-                        }
-                        
-                        return `<div class="text-line">${line}</div>`;
-                    }).filter(line => line);
-                    
+                    let formattedLines;
+
+                    if (summaryType === 'bullet') {
+                        formattedLines = lines.map(line => {
+                            if (!line.trim()) return '';
+                            if (line.trim().startsWith('-') || line.trim().startsWith('•')) {
+                                return `<div class="bullet-point">${line}</div>`;
+                            }
+                            if (line.match(/^[A-Z][\w\s]+:$/)) {
+                                return `<div class="section-header">${line}</div>`;
+                            }
+                            return `<div class="text-line">${line}</div>`;
+                        });
+                    } else if (summaryType === 'executive' || summaryType === 'detailed') {
+                        formattedLines = lines.map(line => {
+                            if (!line.trim()) return '';
+                            if (line.match(/^[A-Z][\w\s]+:$/)) {
+                                return `<div class="section-header">${line}</div>`;
+                            }
+                            return `<div class="text-line">${line}</div>`;
+                        });
+                    } else { // concise and others
+                        formattedLines = lines.map(line => {
+                            if (!line.trim()) return '';
+                            return `<div class="text-line">${line}</div>`;
+                        });
+                    }
+
                     contentDiv.innerHTML = formattedLines.join('');
                     summaryDiv.appendChild(contentDiv);
                 }

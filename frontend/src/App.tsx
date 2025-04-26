@@ -11,6 +11,7 @@ import SummaryModal from './components/SummaryModal'
 import { useAudioStore } from './utils/audio'
 import RecordedConversations from './components/RecordedConversations'
 import VoiceSettings from './components/VoiceSettings'
+import MessageInput from './components/MessageInput'
 
 const queryClient = new QueryClient()
 
@@ -281,7 +282,7 @@ function App() {
   };
 
   const handleModeChange = (value: string | null) => {
-    if (value && (value === 'individual' || value === 'sequential' || value === 'parallel' || value === 'cyclic')) {
+    if (value && (value === 'individual' || value === 'sequential' || value === 'cyclic')) {
       // Clear any existing state from previous mode
       setCurrentCycle(0);
       setCurrentIterationPanel(0);
@@ -305,13 +306,12 @@ function App() {
       const modeDescriptions = {
         individual: 'Individual panel mode',
         sequential: 'Sequential mode - each panel responds once',
-        parallel: 'Parallel mode - all panels respond simultaneously',
         cyclic: `Cyclic mode - ${maxCycles} rounds through all panels`
       };
       
       notifications.show({
         title: 'Mode Changed',
-        message: modeDescriptions[value as ChatMode],
+        message: modeDescriptions[value as keyof typeof modeDescriptions],
         color: 'teal'
       });
     }
@@ -350,7 +350,8 @@ function App() {
   };
 
   const handleParallelMessage = (message: string) => {
-    // Send the message to all panels except the source panel
+    // Send the message to all panels
+    let missingModelPanels = 0;
     chatPanels.forEach((_, index) => {
       const panelElement = document.querySelector(`[data-panel-index="${index}"]`);
       if (panelElement && panelElement.getAttribute('data-panel-state') === 'ready') {
@@ -362,8 +363,18 @@ function App() {
           }
         });
         panelElement.dispatchEvent(event);
+        console.log(`Dispatched parallel-message to panel ${index}`);
+      } else {
+        missingModelPanels++;
       }
     });
+    if (missingModelPanels > 0) {
+      notifications.show({
+        title: 'Warning',
+        message: `${missingModelPanels} panel(s) do not have a model selected and will not respond.`,
+        color: 'yellow',
+      });
+    }
   };
 
   const handleIterationMessage = (message: string) => {
@@ -594,6 +605,28 @@ function App() {
     lastCyclicResponse.current = message;
   };
 
+  // Add a handler for sending messages from the top-level input
+  const handleUserSend = (message: string) => {
+    if (chatMode === 'parallel') {
+      handleParallelMessage(message);
+    } else if (chatMode === 'sequential' || chatMode === 'cyclic') {
+      handleSequentialMessage(message); // or handleCyclicMessage for cyclic if needed
+    } else {
+      // For individual mode, send to the first (or active) panel
+      const panelElement = document.querySelector('[data-panel-index="0"]');
+      if (panelElement) {
+        const event = new CustomEvent('sequential-message', {
+          detail: {
+            message,
+            role: lastSelectedModel?.role,
+            posture: lastSelectedModel?.posture
+          }
+        });
+        panelElement.dispatchEvent(event);
+      }
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <MantineProvider 
@@ -645,7 +678,6 @@ function App() {
                     data={[
                       { value: 'individual', label: 'Individual' },
                       { value: 'sequential', label: 'Sequential (Once through all panels)' },
-                      { value: 'parallel', label: 'Parallel (All panels at once)' },
                       { value: 'cyclic', label: 'Cyclic (Multiple rounds)' }
                     ]}
                     value={chatMode}
@@ -669,6 +701,14 @@ function App() {
           </AppShell.Header>
 
           <AppShell.Main>
+            {/* Place MessageInput at the top */}
+            <Box style={{ padding: '1rem', background: 'var(--surface-color)' }}>
+              <MessageInput
+                onSend={handleUserSend}
+                disabled={false}
+                // Add any other props as needed
+              />
+            </Box>
             <Box style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%' }}>
               {chatPanels.map((panel, index) => (
                 <Box key={panel.id} h={getPanelHeight()} style={{ flex: `0 0 ${100 / chatPanels.length}%`, maxWidth: `${100 / chatPanels.length}%`, minWidth: 0, boxSizing: 'border-box', height: '100%' }}>

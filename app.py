@@ -16,6 +16,7 @@ import pdf2image
 import pytesseract
 from pathlib import Path
 import uuid
+import tiktoken  # Add this import at the top if not present
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Add this near the top
@@ -495,12 +496,50 @@ def summarize():
     
     # Format the conversation for the summarizer
     try:
-        conversation_text = "\n\n".join([
-            f"Panel {msg['panel']} - {msg['panelTitle']}\n"
-            f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
-            f"{msg['content']}"
-            for msg in conversation
-        ])
+        # --- Tokenizer logic ---
+        # Set a safe token limit for your model (adjust as needed)
+        MAX_TOKENS = 8000
+        truncated = False
+        tokenizer = None
+        try:
+            tokenizer = tiktoken.encoding_for_model(model)
+        except Exception:
+            try:
+                tokenizer = tiktoken.get_encoding('cl100k_base')
+            except Exception:
+                tokenizer = None
+        
+        def count_tokens(text):
+            if tokenizer:
+                return len(tokenizer.encode(text))
+            return len(text) // 4  # fallback estimate
+        
+        # Build conversation text, starting with the question and working back from the end
+        conversation_text = ""
+        tokens_used = 0
+        # Always include the first question
+        if conversation:
+            first = conversation[0]
+            first_block = (
+                f"Panel {first['panel']} - {first['panelTitle']}\n"
+                f"{'Question' if first['type'] == 'question' else 'Response'} ({first['timestamp']}):\n"
+                f"{first['content']}\n\n"
+            )
+            tokens_used += count_tokens(first_block)
+            conversation_text += first_block
+        # Now add as many messages as possible from the end
+        for msg in reversed(conversation[1:]):
+            block = (
+                f"Panel {msg['panel']} - {msg['panelTitle']}\n"
+                f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
+                f"{msg['content']}\n\n"
+            )
+            block_tokens = count_tokens(block)
+            if tokens_used + block_tokens > MAX_TOKENS:
+                truncated = True
+                break
+            conversation_text = block + conversation_text
+            tokens_used += block_tokens
     except KeyError as e:
         print(f"Error formatting conversation: {str(e)}")
         return jsonify({'error': f'Invalid conversation format: missing {str(e)}'})
@@ -586,6 +625,10 @@ def summarize():
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         summary = f'Unexpected error while generating summary: {str(e)}'
+    
+    # After getting the summary:
+    if 'summary' in locals() and truncated:
+        summary = "Note: The summary was truncated due to input length limits.\n\n" + summary
     
     return jsonify({'summary': summary})
 

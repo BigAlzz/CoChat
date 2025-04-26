@@ -927,13 +927,6 @@ const ChatPanel = ({
             </Stack>
           </ScrollArea>
         </Box>
-
-        <MessageInput
-          onSend={handleSendMessage}
-          onFileUpload={handleFileUpload}
-          disabled={isLoading || !conversationId || !selectedModel}
-          style={{ flexShrink: 0 }}
-        />
       </Stack>
     </Paper>
   );
