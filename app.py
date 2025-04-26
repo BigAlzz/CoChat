@@ -102,31 +102,27 @@ def models():
     """Query LM Studio to retrieve available models with caching"""
     try:
         current_time = datetime.now()
-        
         # Check if we need to refresh the cache
-        if (MODEL_CACHE['last_fetch'] is None or 
-            (current_time - MODEL_CACHE['last_fetch']).total_seconds() > MODEL_CACHE_DURATION):
-            
+        if (
+            MODEL_CACHE['last_fetch'] is None or
+            (current_time - MODEL_CACHE['last_fetch']).total_seconds() > MODEL_CACHE_DURATION
+        ):
             # Get server URL from request or use default
             if request.method == 'POST' and request.is_json:
                 data = request.json
                 server_url = data.get('server_url', LM_STUDIO_SERVER)
             else:
                 server_url = LM_STUDIO_SERVER
-                
             print(f"Fetching models from: {server_url}")
-            
             # Clean up the server URL to ensure proper format
             if server_url.endswith('/v1'):
                 server_url = server_url[:-3]
             if server_url.endswith('/'):
                 server_url = server_url[:-1]
-                
             # Fetch new models
             response = requests.get(f'{server_url}/v1/models', timeout=120)
             response.raise_for_status()
             models_data = response.json()
-            
             if 'data' in models_data:
                 # Update cache
                 MODEL_CACHE['models'] = models_data['data']
@@ -141,7 +137,6 @@ def models():
             # Return cached models if they're still fresh
             print("Returning cached models")
             return jsonify({'models': MODEL_CACHE['models']})
-            
     except requests.exceptions.ConnectionError as e:
         print(f"Connection error fetching models: {str(e)}")
         # Return cached models on connection error if available
@@ -180,8 +175,8 @@ def optimize_image(img, max_size=MAX_IMAGE_DIMENSION):
         
         # Resize image if larger than max size
         if img.size[0] > max_size or img.size[1] > max_size:
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-        
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            
         # Optimize image quality and memory usage
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='JPEG', quality=IMAGE_QUALITY, optimize=True)
@@ -331,13 +326,13 @@ def chat():
 
         # Get server URL from session or use default
         server_url = session.get('lm_studio_url', LM_STUDIO_SERVER)
-        
+
         # Clean up the server URL
         if server_url.endswith('/v1'):
             server_url = server_url[:-3]
         if server_url.endswith('/'):
             server_url = server_url[:-1]
-        
+
         # Verify server connection before proceeding
         try:
             health_check = requests.get(f"{server_url}/v1/models", timeout=REQUEST_TIMEOUT)
@@ -390,7 +385,7 @@ def chat():
                         error_data = response.json()
                         yield f"data: {json.dumps({'error': error_data.get('error', 'Unknown error')})}\n\n"
                         return
-
+                    
                     for line in response.iter_lines():
                         if line:
                             try:
@@ -426,7 +421,6 @@ def chat():
                                                 if 'content' in delta:
                                                     content = delta['content']
                                                     full_response += content  # Accumulate the response
-                                                    
                                                     # Format response to match LM Studio's format
                                                     response_data = {
                                                         'id': f'chatcmpl-{response_id}',
@@ -445,9 +439,13 @@ def chat():
                                         except json.JSONDecodeError as e:
                                             print(f"Error parsing JSON: {data}")
                                             yield f"data: {json.dumps({'error': f'JSON parse error: {str(e)}'})}\n\n"
+                                        except Exception as e:
+                                            print(f"Error processing line: {e}")
+                                            yield f"data: {json.dumps({'error': f'Stream processing error: {str(e)}'})}\n\n"
                             except Exception as e:
-                                print(f"Error processing line: {e}")
-                                yield f"data: {json.dumps({'error': f'Stream processing error: {str(e)}'})}\n\n"
+                                print(f"Error in stream generation: {e}")
+                                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                                yield 'data: [DONE]\n\n'
                 except Exception as e:
                     print(f"Error in stream generation: {e}")
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -552,7 +550,7 @@ def summarize():
             server_url = server_url[:-1]
             
         print(f"Making request to: {server_url}/v1/chat/completions")
-        
+            
         response = requests.post(
             f'{server_url}/v1/chat/completions',
             json={

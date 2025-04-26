@@ -23,6 +23,7 @@
                     <li><a class="dropdown-item" href="#" data-mode="individual">Individual</a></li>
                     <li><a class="dropdown-item" href="#" data-mode="sequential">Sequential</a></li>
                     <li><a class="dropdown-item" href="#" data-mode="parallel">Parallel</a></li>
+                    <li><a class="dropdown-item" href="#" data-mode="cyclic">Cyclic</a></li>
                 </ul>
                 </div>
             <button class="add-panel-btn" id="addAssistant"><i class="bi bi-plus"></i> Add Panel</button>
@@ -35,6 +36,7 @@
         <option value="individual" selected>Individual</option>
         <option value="sequential">Sequential</option>
         <option value="parallel">Parallel</option>
+        <option value="cyclic">Cyclic</option>
     </select>
 
         <div id="assistantsContainer">
@@ -200,7 +202,7 @@
                 .then(data => {
                     console.log("Default settings saved successfully:", data);
                     // Initial fetch of models with retries
-                    fetchModels();
+            fetchModels();
                 })
                 .catch(error => {
                     console.error('Error saving default settings:', error);
@@ -1003,7 +1005,7 @@
             
             try {
                 const response = await fetch('/chat', {
-                    method: 'POST',
+                method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
@@ -1026,16 +1028,16 @@
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-
+                
                 if (streamEnabled) {
                     // Handle streaming response
                     await handleStreamResponse(response, chatWindow, panel);
                 } else {
                     // Handle non-streaming response
                     const data = await response.json();
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
                     if (data.choices && data.choices[0]) {
                         const content = data.choices[0].message.content;
                         const assistantMessage = createMessageWithCopy(content, 'assistant-message');
@@ -1048,9 +1050,9 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                const errorMessage = createMessageWithCopy('Error: ' + error.message, 'error-message');
-                chatWindow.appendChild(errorMessage);
-                chatWindow.scrollTop = chatWindow.scrollHeight;
+                    const errorMessage = createMessageWithCopy('Error: ' + error.message, 'error-message');
+                    chatWindow.appendChild(errorMessage);
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
             } finally {
                 // Re-enable the send button, hide stop button
                 sendButton.disabled = false;
@@ -1169,11 +1171,11 @@
                     
                     // Only add message if we have valid content
                     if (contentElement && contentElement.textContent) {
-                        conversationHistory.push({
-                            role: isUser ? "user" : "assistant",
+                    conversationHistory.push({
+                        role: isUser ? "user" : "assistant",
                             sender: isUser ? "User" : (senderElement ? senderElement.textContent : "Assistant"),
                             content: contentElement.textContent
-                        });
+                    });
                     }
                 });
                 
@@ -1319,16 +1321,16 @@
                     }, (retryCount + 1) * 2000); // Exponential backoff
                 } else {
                     console.error('Max retries exceeded');
-                    document.querySelectorAll('.model-select').forEach(select => {
+                document.querySelectorAll('.model-select').forEach(select => {
                         const panelId = select.closest('.chat-panel').id;
                         const previousSelection = currentSelections[panelId];
-                        select.innerHTML = '<option value="">Error loading models</option>';
-                        // Add a second option with the error message
-                        const option = document.createElement('option');
-                        option.value = "";
-                        option.textContent = error.message;
-                        option.disabled = true;
-                        select.appendChild(option);
+                    select.innerHTML = '<option value="">Error loading models</option>';
+                    // Add a second option with the error message
+                    const option = document.createElement('option');
+                    option.value = "";
+                    option.textContent = error.message;
+                    option.disabled = true;
+                    select.appendChild(option);
                         
                         // Try to restore previous selection if it exists in the error state
                         if (previousSelection) {
@@ -1774,7 +1776,7 @@
                             pdfText.innerHTML = 'Error loading PDF content';
                         }
                     });
-            } else {
+                        } else {
                 // Create regular message content
                 messageDiv.innerHTML = `
                     <div class="message-content">${content}</div>
@@ -2097,6 +2099,74 @@
             const chatWindow = panel.querySelector('.chat-window');
             chatWindow.innerHTML = '';
         }
+
+        window.isCyclicActive = false;
+
+        // Add Stop Cycle button
+        const stopBtn = document.createElement('button');
+        stopBtn.id = 'stopCyclicBtn';
+        stopBtn.textContent = 'Stop Cycle';
+        stopBtn.style.display = 'none';
+        stopBtn.style.position = 'fixed';
+        stopBtn.style.top = '10px';
+        stopBtn.style.right = '10px';
+        stopBtn.style.zIndex = '1000';
+        document.body.appendChild(stopBtn);
+        function showStopBtn(show) {
+          stopBtn.style.display = show ? 'block' : 'none';
+        }
+        stopBtn.onclick = () => {
+          window.isCyclicActive = false;
+          showStopBtn(false);
+        };
+
+        // Update mode selection to handle cyclic
+        const modeDropdownItems = document.querySelectorAll('.dropdown-item[data-mode]');
+        modeDropdownItems.forEach(item => {
+          item.addEventListener('click', function(e) {
+            const mode = this.getAttribute('data-mode');
+            window.isCyclicActive = (mode === 'cyclic');
+            showStopBtn(window.isCyclicActive);
+            // ...existing mode change logic...
+          });
+        });
+
+        // Core cycling logic
+        function handlePanelResponse(panelIndex, response) {
+          if (!window.isCyclicActive) return;
+          const panels = Array.from(document.querySelectorAll('.chat-panel'));
+          const nextIndex = (panelIndex + 1) % panels.length;
+          const nextPanel = panels[nextIndex];
+          const textarea = nextPanel.querySelector('.prompt-input');
+          textarea.value = response;
+          setTimeout(() => {
+            if (window.isCyclicActive) {
+              const sendButton = nextPanel.querySelector('.send-button');
+              sendButton.click();
+            }
+          }, 1000);
+        }
+
+        // Patch sendMessage to support cyclic mode
+        const originalSendMessage = window.sendMessage || sendMessage;
+        window.sendMessage = async function(button) {
+          const panel = button.closest('.chat-panel');
+          const panels = Array.from(document.querySelectorAll('.chat-panel'));
+          const panelIndex = panels.indexOf(panel);
+          const textarea = panel.querySelector('.prompt-input');
+          const userInitiated = button.classList.contains('send-button') && !window.isCyclicActive;
+          await originalSendMessage.apply(this, arguments);
+          // After the assistant responds, if cyclic mode is active and this was not a user-initiated send, cycle to next panel
+          if (window.isCyclicActive && !userInitiated) {
+            // Find the last assistant message in this panel
+            const chatWindow = panel.querySelector('.chat-window');
+            const messages = Array.from(chatWindow.querySelectorAll('.assistant-message .message-content'));
+            if (messages.length > 0) {
+              const lastResponse = messages[messages.length - 1].textContent;
+              handlePanelResponse(panelIndex, lastResponse);
+            }
+          }
+        };
     </script>
 </body>
 </html>
