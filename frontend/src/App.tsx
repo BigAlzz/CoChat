@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { MantineProvider, AppShell, Box, Text, ActionIcon, Button, SimpleGrid, createTheme, Select, Group, Tooltip, Title, Loader, rem, NumberInput, Modal as MantineModal, Stack, Paper, ScrollArea, Alert, Menu, Badge, Tabs, Menu as ContextMenu } from '@mantine/core'
 import { IconSettings, IconPlus, IconVolume, IconVolumeOff, IconMicrophone, IconFileAnalytics, IconArrowsShuffle, IconArrowsDiagonal2, IconRepeat, IconTrash, IconX, IconHistory, IconDownload, IconFileText, IconFileTypePdf, IconJson } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
@@ -163,6 +163,8 @@ function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [selectedHistoryChat, setSelectedHistoryChat] = useState<SavedChat | null>(null);
+  const [isCyclicActive, setIsCyclicActive] = useState(false);
+  const lastCyclicResponse = useRef<string | null>(null);
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
@@ -258,12 +260,20 @@ function App() {
         break;
 
       case 'cyclic':
-        if (isLastPanel) {
-          if (currentCycle < maxCycles - 1) {
-            setCurrentCycle(prev => prev + 1);
-            setCurrentIterationPanel(0);
-          } else {
-            setIsModeActive(false);
+        if (isCyclicActive && isLastPanel) {
+          // Immediately trigger the first panel again with the last response
+          if (lastCyclicResponse.current) {
+            const event = new CustomEvent('sequential-message', {
+              detail: {
+                message: lastCyclicResponse.current,
+                role: lastSelectedModel?.role,
+                posture: lastSelectedModel?.posture
+              }
+            });
+            const firstPanel = document.querySelector('[data-panel-index="0"]');
+            if (firstPanel) {
+              firstPanel.dispatchEvent(event);
+            }
           }
         }
         break;
@@ -304,6 +314,11 @@ function App() {
         message: modeDescriptions[value as ChatMode],
         color: 'teal'
       });
+    }
+    if (value === 'cyclic') {
+      setIsCyclicActive(true);
+    } else {
+      setIsCyclicActive(false);
     }
   };
 
@@ -574,6 +589,11 @@ function App() {
     }
   };
 
+  // In the ChatPanel onModelResponse or onPanelComplete, store the last response for cyclic mode
+  const handleCyclicMessage = (message: string) => {
+    lastCyclicResponse.current = message;
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <MantineProvider 
@@ -659,7 +679,7 @@ function App() {
                     onRemove={() => removeChatPanel(panel.id)}
                     panelIndex={index}
                     totalPanels={chatPanels.length}
-                    onSequentialMessage={handleSequentialMessage}
+                    onSequentialMessage={chatMode === 'cyclic' ? handleCyclicMessage : handleSequentialMessage}
                     onParallelMessage={handleParallelMessage}
                     currentCycle={currentCycle}
                     onRecordMessage={handleRecordMessage}
@@ -837,6 +857,12 @@ function App() {
             </Group>
           </Stack>
         </MantineModal>
+
+        {chatMode === 'cyclic' && isCyclicActive && (
+          <Button color="red" onClick={() => setIsCyclicActive(false)} style={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
+            Stop Cycle
+          </Button>
+        )}
 
         <style>
           {`
