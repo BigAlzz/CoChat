@@ -193,6 +193,12 @@ html, body, #root {
   color: var(--mantine-color-text) !important;
 }
 
+body.light .mantine-Modal-content {
+  background-color: #fff !important;
+  color: #222 !important;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.12);
+}
+
 .mantine-Table-root {
   color: var(--mantine-color-text) !important;
 }

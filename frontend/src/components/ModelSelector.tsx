@@ -224,11 +224,36 @@ const ModelSelector = ({ onModelSelect, selectedModel, disabled, style }: ModelS
             <Select
               label={<Text size="sm" fw={500}>Posture</Text>}
               placeholder="Select posture"
-              data={ASSISTANT_POSTURES.map(posture => ({
-                value: posture.value,
-                label: posture.label,
-                description: posture.description
-              }))}
+              data={[
+                {
+                  group: 'Concise & Direct',
+                  items: ASSISTANT_POSTURES.filter(p => ['concise', 'pragmatic'].includes(p.value)).map(posture => ({
+                    value: posture.value,
+                    label: `${posture.label} — ${posture.description}`
+                  }))
+                },
+                {
+                  group: 'Supportive & Collaborative',
+                  items: ASSISTANT_POSTURES.filter(p => ['empathetic', 'mentor', 'collaborative'].includes(p.value)).map(posture => ({
+                    value: posture.value,
+                    label: `${posture.label} — ${posture.description}`
+                  }))
+                },
+                {
+                  group: 'Analytical & Academic',
+                  items: ASSISTANT_POSTURES.filter(p => ['academic', 'analytical', 'socratic', 'technical'].includes(p.value)).map(posture => ({
+                    value: posture.value,
+                    label: `${posture.label} — ${posture.description}`
+                  }))
+                },
+                {
+                  group: 'Creative & Exploratory',
+                  items: ASSISTANT_POSTURES.filter(p => ['creative', 'exploratory', 'challenging', 'casual', 'professional'].includes(p.value)).map(posture => ({
+                    value: posture.value,
+                    label: `${posture.label} — ${posture.description}`
+                  }))
+                }
+              ]}
               value={selectedPosture}
               onChange={handlePostureSelect}
               disabled={disabled || loading}

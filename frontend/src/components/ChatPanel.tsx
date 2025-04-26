@@ -56,6 +56,10 @@ interface Memory {
   metadata?: Record<string, any>;
 }
 
+function capitalize(str: string) {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+}
+
 const ChatPanel = ({ 
   title, 
   isAutonomous, 
@@ -126,7 +130,25 @@ const ChatPanel = ({
   // Separate useEffect for message handling
   useEffect(() => {
     const handleSequentialEvent = (event: CustomEvent) => {
+      console.log('Sequential event received:', event.detail?.message);
       if (event.detail && event.detail.message && selectedModel) {
+        if (isLoading) {
+          notifications.show({
+            title: 'Wait',
+            message: 'In sequential mode, you must wait for the previous assistant to finish.',
+            color: 'yellow'
+          });
+          return;
+        }
+        // Prevent processing the same message again
+        if (messages.length > 0 && messages[messages.length - 1].content === event.detail.message) {
+          return;
+        }
+        // Mark as used immediately
+        const panel = document.querySelector(`[data-panel-index="${panelIndex}"]`);
+        if (panel) {
+          panel.setAttribute('data-sequential-used', 'true');
+        }
         // Update role and posture based on panel position in sequential mode
         if (mode === 'sequential' && event.detail.role && event.detail.posture) {
           setSelectedRole(event.detail.role);
@@ -512,10 +534,29 @@ const ChatPanel = ({
         );
       }
 
-      // Handle sequential/parallel mode logic
-      if (mode === 'sequential' && onSequentialMessage && !isParallelResponse) {
-        onSequentialMessage(accumulatedResponse);
-      } else if (mode === 'parallel' && onParallelMessage) {
+      // Panel-to-panel sequential forwarding
+      if (
+        mode === 'sequential' &&
+        typeof panelIndex === 'number' &&
+        typeof totalPanels === 'number' &&
+        panelIndex < totalPanels - 1
+      ) {
+        // Send the assistant's response to the next panel
+        const nextPanel = document.querySelector(`[data-panel-index="${panelIndex + 1}"]`);
+        if (nextPanel) {
+          const event = new CustomEvent('sequential-message', {
+            detail: {
+              message: accumulatedResponse,
+              role: selectedRole,
+              posture: selectedPosture
+            }
+          });
+          nextPanel.dispatchEvent(event);
+        }
+      }
+
+      // Handle parallel mode logic
+      if (mode === 'parallel' && onParallelMessage) {
         onParallelMessage(accumulatedResponse);
       }
 
@@ -779,7 +820,7 @@ const ChatPanel = ({
         }}>
           <Group justify="space-between" w="100%" align="center">
             <Title order={3}>
-              {selectedRole && selectedPosture ? `${selectedPosture} ${selectedRole}` : title}
+              {selectedRole && selectedPosture ? `${capitalize(selectedPosture)} ${capitalize(selectedRole)}` : title}
               <Text size="xs" c="dimmed" style={{ marginLeft: '0.5rem' }}>
                 ({mode} mode)
               </Text>
@@ -825,13 +866,14 @@ const ChatPanel = ({
                 </ActionIcon>
               </Tooltip>
               {onRemove && (
-                <ActionIcon
-                  variant="light"
-                  color="red"
+                <button
+                  className="btn-close"
                   onClick={onRemove}
+                  title="Close panel"
+                  style={{ background: 'transparent', border: 'none', fontSize: 18, marginLeft: 8 }}
                 >
-                  <IconX size={16} />
-                </ActionIcon>
+                  <i className="bi bi-x-lg"></i>
+                </button>
               )}
             </Group>
           </Group>

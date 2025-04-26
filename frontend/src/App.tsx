@@ -262,8 +262,13 @@ function App() {
 
       case 'cyclic':
         if (isCyclicActive && isLastPanel) {
-          // Immediately trigger the first panel again with the last response
-          if (lastCyclicResponse.current) {
+          if (currentCycle + 1 < maxCycles && lastCyclicResponse.current) {
+            // Reset per-panel state for the new cycle
+            document.querySelectorAll('[data-sequential-used]').forEach(panel => {
+              panel.removeAttribute('data-sequential-used');
+            });
+            setCurrentCycle(prev => prev + 1);
+            // Trigger the first panel with the last response
             const event = new CustomEvent('sequential-message', {
               detail: {
                 message: lastCyclicResponse.current,
@@ -275,6 +280,8 @@ function App() {
             if (firstPanel) {
               firstPanel.dispatchEvent(event);
             }
+          } else {
+            setIsCyclicActive(false); // Stop after max cycles
           }
         }
         break;
@@ -331,19 +338,18 @@ function App() {
     });
 
     if (nextPanelIndex !== -1) {
-      // Create and dispatch the sequential message event
-      const event = new CustomEvent('sequential-message', {
-        detail: {
-          message,
-          role: lastSelectedModel?.role,
-          posture: lastSelectedModel?.posture
-        }
-      });
-
       const nextPanel = document.querySelector(`[data-panel-index="${nextPanelIndex}"]`);
       if (nextPanel) {
-        // Mark this panel as used in the sequential flow
+        // Mark this panel as used in the sequential flow BEFORE dispatching
         nextPanel.setAttribute('data-sequential-used', 'true');
+        // Create and dispatch the sequential message event
+        const event = new CustomEvent('sequential-message', {
+          detail: {
+            message,
+            role: lastSelectedModel?.role,
+            posture: lastSelectedModel?.posture
+          }
+        });
         nextPanel.dispatchEvent(event);
       }
     }
@@ -609,7 +615,20 @@ function App() {
   const handleUserSend = (message: string) => {
     if (chatMode === 'parallel') {
       handleParallelMessage(message);
-    } else if (chatMode === 'sequential' || chatMode === 'cyclic') {
+    } else if (chatMode === 'sequential') {
+      // Only send to the first panel
+      const panelElement = document.querySelector('[data-panel-index="0"]');
+      if (panelElement) {
+        const event = new CustomEvent('sequential-message', {
+          detail: {
+            message,
+            role: lastSelectedModel?.role,
+            posture: lastSelectedModel?.posture
+          }
+        });
+        panelElement.dispatchEvent(event);
+      }
+    } else if (chatMode === 'cyclic') {
       handleSequentialMessage(message); // or handleCyclicMessage for cyclic if needed
     } else {
       // For individual mode, send to the first (or active) panel

@@ -1,5 +1,5 @@
-import { Modal, Button, Group, Text, Select, Stack, Paper, CopyButton, Tooltip, Loader, Alert, ScrollArea } from '@mantine/core';
-import { IconCopy, IconDownload, IconCheck, IconAlertCircle, IconBrandWhatsapp, IconListNumbers, IconFileText, IconPlayerPause, IconPlayerStop, IconPlayerPlay, IconHeadphones, IconBrandTelegram, IconPdf } from '@tabler/icons-react';
+import { Modal, Button, Group, Text, Select, Stack, Paper, CopyButton, Tooltip, Loader, Alert, ScrollArea, ActionIcon } from '@mantine/core';
+import { IconCopy, IconDownload, IconCheck, IconAlertCircle, IconBrandWhatsapp, IconListNumbers, IconFileText, IconPlayerPause, IconPlayerStop, IconPlayerPlay, IconHeadphones, IconBrandTelegram, IconPdf, IconInfoCircle } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import AudioManager from '../services/AudioManager';
@@ -43,6 +43,7 @@ export default function SummaryModal({ opened, onClose, conversations, onExport 
   const [isSummaryPaused, setIsSummaryPaused] = useState(false);
   const [showWhatsAppPreview, setShowWhatsAppPreview] = useState(false);
   const [whatsAppContent, setWhatsAppContent] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     const loadModels = async () => {
@@ -115,37 +116,13 @@ export default function SummaryModal({ opened, onClose, conversations, onExport 
       let systemPrompt;
       switch (summaryType) {
         case 'whatsapp':
-          systemPrompt = `Create a WhatsApp-style summary of the conversation using emojis and brief points. Format should be:
-
-📱 *Main Topic*
-➡️ Key Point 1
-➡️ Key Point 2
-💡 Insights
-✅ Conclusions
-
-Keep it concise and engaging, using appropriate emojis for different types of information.`;
+          systemPrompt = `Create a WhatsApp-style summary of the conversation using emojis and brief points. Format should be:\n\n📱 *Main Topic*\n➡️ Key Point 1\n➡️ Key Point 2\n💡 Insights\n✅ Conclusions\n\nKeep it concise and engaging, using appropriate emojis for different types of information.`;
           break;
         case 'detailed':
-          systemPrompt = `Create a detailed report of the multi-panel conversation. Include:
-
-1. Executive Summary
-2. Question/Initial Prompt
-3. Panel-by-Panel Analysis
-4. Key Discussion Points
-5. Cross-Panel Insights
-6. Conclusions
-7. Recommendations
-
-For each panel, clearly indicate the role of the AI assistant and their specific contributions.`;
+          systemPrompt = `Create a detailed, chronological, blow-by-blow transcript of the multi-panel conversation. For each turn, clearly indicate the speaker (user or assistant, with assistant's name/role if available), the panel (if available), and exactly what was said. Do not summarize or omit any turns. Format as a readable transcript, e.g.\n\nPanel 1 - User: <user message>\nPanel 1 - Assistant (Researcher): <assistant message>\nPanel 2 - Assistant (Mentor): <assistant message>\n...\n\nAt the end, provide a brief section for Key Discussion Points, Cross-Panel Insights, and Conclusions.\n\nIf possible, use the assistantName for each assistant turn. If not available, use 'Assistant'.`;
           break;
         default: // concise
-          systemPrompt = `Create a concise summary of the multi-panel conversation. Include:
-
-1. Initial Question/Prompt
-2. Key Points from Each Panel
-3. Overall Conclusions
-
-Format the output in a clear, readable structure with panel numbers and assistant roles.`;
+          systemPrompt = `Create a concise summary of the multi-panel conversation. Include:\n\n1. Initial Question/Prompt\n2. Key Points from Each Panel\n3. Overall Conclusions\n\nFormat the output in a clear, readable structure with panel numbers and assistant roles.`;
       }
 
       // Send to API for summarization
@@ -161,7 +138,7 @@ Format the output in a clear, readable structure with panel numbers and assistan
           ],
           model: selectedModel,
           temperature: 0.7,
-          max_tokens: 2000,
+          max_tokens: 4000,
           stream: true
         })
       });
@@ -208,6 +185,7 @@ Format the output in a clear, readable structure with panel numbers and assistan
     } catch (error) {
       console.error('Error generating summary:', error);
       setError(error instanceof Error ? error.message : 'Failed to generate summary');
+      console.log('Summary error handled, no chat state mutated.');
     } finally {
       setIsGenerating(false);
     }
@@ -550,6 +528,16 @@ Format the output in a clear, readable structure with panel numbers and assistan
             >
               Generate Summary
             </Button>
+            <ActionIcon
+              variant="light"
+              color="blue"
+              size="lg"
+              onClick={() => setHelpOpen(true)}
+              title="Help & User Guide"
+              style={{ marginLeft: 8 }}
+            >
+              <IconInfoCircle size={22} />
+            </ActionIcon>
           </Group>
         </Stack>
       </Modal>
@@ -593,6 +581,96 @@ Format the output in a clear, readable structure with panel numbers and assistan
               Close Preview
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title={<Group><IconInfoCircle size={22} /><Text>User Guide & Help</Text></Group>}
+        size="xl"
+        styles={{ body: { maxHeight: '80vh', overflowY: 'auto' } }}
+      >
+        <Stack gap="md">
+          <Text size="lg" fw={700}>CoChat User Guide</Text>
+          <Text>
+{`
+## Overview
+CoChat is a multi-panel, multi-agent chat application designed for collaborative, comparative, and exploratory conversations with AI assistants. You can configure multiple panels, each with its own assistant, role, and posture, and run conversations in various modes (individual, sequential, parallel, cyclic). The app also features advanced summary generation and export options.
+
+## Getting Started
+1. **Launch the App:** Start the backend server and open the frontend in your browser.
+2. **Add Panels:** Use the "Add Panel" button to create up to 6 panels. Each panel represents a separate AI assistant.
+3. **Select Mode:** Choose a chat mode from the dropdown:
+   - **Individual:** Each panel operates independently.
+   - **Sequential:** The conversation flows from one panel to the next, each building on the previous response.
+   - **Parallel:** All panels respond to the same prompt simultaneously.
+   - **Cyclic:** The conversation cycles through all panels for multiple rounds.
+4. **Configure Assistants:** For each panel, select a model, role, and posture. You can also set a custom voice for text-to-speech.
+5. **Start Chatting:** Enter your message in the input box and send. The conversation will proceed according to the selected mode.
+6. **Export & Summarize:** Use the summary and export features to generate concise, detailed, or WhatsApp-style summaries, and export conversations as text, PDF, or JSON.
+
+## Chat Modes
+- **Individual:** Each panel is independent. Useful for comparing different models or configurations.
+- **Sequential:** The user's message is sent to the first panel; each subsequent panel receives the previous panel's response. Great for stepwise reasoning or multi-perspective analysis.
+- **Parallel:** All panels receive the same user message and respond in parallel. Useful for side-by-side comparison.
+- **Cyclic:** The conversation cycles through all panels for a set number of rounds, allowing for iterative, evolving discussions.
+
+## Panels, Postures, and Roles
+- **Panel:** A container for an AI assistant. Each panel can have its own model, role, and posture.
+- **Role:** The "persona" or function of the assistant (e.g., Researcher, Mentor, Critic, Creative, Technical Expert).
+- **Posture:** The communication style or attitude of the assistant (e.g., Concise, Empathetic, Analytical, Socratic, Creative, Professional).
+
+### Example Roles
+- **Researcher:** Focuses on evidence, sources, and thorough analysis.
+- **Mentor:** Offers guidance, encouragement, and step-by-step help.
+- **Critic:** Points out flaws, challenges assumptions, and provides counterarguments.
+- **Creative:** Suggests novel ideas, brainstorming, and out-of-the-box thinking.
+- **Technical Expert:** Delivers precise, technical, and detailed explanations.
+
+### Example Postures
+- **Concise:** Short, direct, and to the point.
+- **Empathetic:** Supportive, understanding, and emotionally aware.
+- **Analytical:** Breaks down problems, uses logic and structure.
+- **Socratic:** Asks probing questions to stimulate critical thinking.
+- **Creative:** Uses metaphors, analogies, and imaginative language.
+- **Professional:** Formal, respectful, and business-like.
+
+## How Postures and Roles Interact
+The combination of role and posture defines each assistant's unique voice. Here are some examples:
+
+- **Researcher + Analytical:** Provides in-depth, logical breakdowns with references to studies or data.
+- **Mentor + Empathetic:** Offers step-by-step help with encouragement and emotional support.
+- **Critic + Socratic:** Challenges ideas by asking thought-provoking questions, prompting deeper reflection.
+- **Creative + Concise:** Delivers imaginative ideas in a punchy, memorable way.
+- **Technical Expert + Professional:** Gives detailed, accurate answers in a formal, business-like tone.
+
+### Example Interaction
+Suppose you ask: "How can we improve team productivity?"
+- **Panel 1 (Researcher + Analytical):** "Studies show that clear goals and regular feedback increase productivity by 20%. Consider implementing weekly check-ins and SMART objectives."
+- **Panel 2 (Mentor + Empathetic):** "It's great that you care about your team's growth! Start by listening to their concerns and celebrating small wins together."
+- **Panel 3 (Critic + Socratic):** "What do you think is currently holding your team back? Are there any processes that create bottlenecks?"
+- **Panel 4 (Creative + Concise):** "Gamify tasks! Try a leaderboard or creative challenges to boost engagement."
+
+## Summary Generation
+CoChat offers advanced summary generation with three styles:
+- **Concise:** A brief overview with key points and conclusions.
+- **Detailed:** A blow-by-blow transcript, panel-by-panel, showing each assistant's contributions and all user/assistant turns in order. Ends with key discussion points and insights.
+- **WhatsApp Style:** A fun, emoji-rich summary formatted for easy sharing.
+
+To generate a summary:
+1. Click the "Generate Summary" button.
+2. Choose the summary type and model.
+3. Wait for the summary to be generated (streamed in real time).
+4. Export or copy the summary as needed.
+
+## Tips and Best Practices
+- Experiment with different combinations of roles and postures for richer discussions.
+- Use sequential or cyclic modes for multi-step reasoning or iterative brainstorming.
+- Export and review summaries to capture key insights and action items.
+- Adjust the number of panels and cycles to fit your workflow.
+`}
+          </Text>
         </Stack>
       </Modal>
     </>
