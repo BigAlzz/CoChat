@@ -72,11 +72,16 @@
                     <div class="d-flex align-items-center gap-2 mt-2">
                         <select class="posture-select" style="max-width: 180px;">
                             <option value="professional">Professional</option>
-                            <option value="academic">Academic & Scholarly</option>
-                            <option value="analytical">Analytical & Methodical</option>
-                            <option value="casual">Casual & Friendly</option>
-                            <option value="concise" selected>Concise & Direct</option>
-                            <option value="creative">Creative & Imaginative</option>
+                            <option value="academic">Academic</option>
+                            <option value="scholarly">Scholarly</option>
+                            <option value="analytical">Analytical</option>
+                            <option value="methodical">Methodical</option>
+                            <option value="casual">Casual</option>
+                            <option value="friendly">Friendly</option>
+                            <option value="concise" selected>Concise</option>
+                            <option value="direct">Direct</option>
+                            <option value="creative">Creative</option>
+                            <option value="imaginative">Imaginative</option>
                         </select>
                         <select class="role-select" style="max-width: 130px;">
                             <option value="researcher">Researcher</option>
@@ -533,12 +538,17 @@
                         <textarea class="prompt-input" rows="2" placeholder="Type your message..."></textarea>
                         <div class="d-flex align-items-center gap-2 mt-2">
                             <select class="posture-select" style="max-width: 180px;">
-                                <option value="professional" ${posture === 'professional' ? 'selected' : ''}>Professional</option>
-                                <option value="academic" ${posture === 'academic' ? 'selected' : ''}>Academic & Scholarly</option>
-                                <option value="analytical" ${posture === 'analytical' ? 'selected' : ''}>Analytical & Methodical</option>
-                                <option value="casual" ${posture === 'casual' ? 'selected' : ''}>Casual & Friendly</option>
-                                <option value="concise" ${posture === 'concise' ? 'selected' : ''}>Concise & Direct</option>
-                                <option value="creative" ${posture === 'creative' ? 'selected' : ''}>Creative & Imaginative</option>
+                                <option value="professional">Professional</option>
+                                <option value="academic">Academic</option>
+                                <option value="scholarly">Scholarly</option>
+                                <option value="analytical">Analytical</option>
+                                <option value="methodical">Methodical</option>
+                                <option value="casual">Casual</option>
+                                <option value="friendly">Friendly</option>
+                                <option value="concise" selected>Concise</option>
+                                <option value="direct">Direct</option>
+                                <option value="creative">Creative</option>
+                                <option value="imaginative">Imaginative</option>
                             </select>
                             <select class="role-select" style="max-width: 130px;">
                                 <option value="researcher" ${role === 'researcher' ? 'selected' : ''}>Researcher</option>
@@ -942,11 +952,14 @@
             const roleSelect = panel.querySelector('.role-select');
             const postureSelect = panel.querySelector('.posture-select');
             const panelTitle = panel.querySelector('.panel-header h5');
-            
             if (roleSelect && postureSelect && panelTitle) {
-                const role = roleSelect.options[roleSelect.selectedIndex].textContent.toLowerCase();
-                const posture = postureSelect.options[postureSelect.selectedIndex].textContent.toLowerCase();
-                panelTitle.textContent = `${posture} ${role}`;
+                const role = roleSelect.options[roleSelect.selectedIndex].textContent;
+                const posture = postureSelect.options[postureSelect.selectedIndex].textContent;
+                // Capitalize first letter of each word
+                function capitalizeWords(str) {
+                    return str.replace(/\b\w/g, c => c.toUpperCase());
+                }
+                panelTitle.textContent = `${capitalizeWords(posture)} ${capitalizeWords(role)}`;
             }
         }
         
