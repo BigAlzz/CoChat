@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      #helpButton { display: inline-flex !important; }
+    </style>
 </head>
 <body>
     <div class="app-header">
@@ -23,11 +26,12 @@
                 <ul class="dropdown-menu dropdown-menu-dark">
                     <li><a class="dropdown-item" href="#" data-mode="individual"><i class="bi bi-person me-2"></i>Individual</a></li>
                     <li><a class="dropdown-item" href="#" data-mode="sequential"><i class="bi bi-list-ol me-2"></i>Sequential</a></li>
-                    <li><a class="dropdown-item" href="#" data-mode="parallel"><i class="bi bi-columns-gap me-2"></i>Parallel</a></li>
+                    <!-- <li><a class="dropdown-item" href="#" data-mode="parallel"><i class="bi bi-columns-gap me-2"></i>Parallel</a></li> -->
                     <li><a class="dropdown-item" href="#" data-mode="cyclic"><i class="bi bi-arrow-repeat me-2"></i>Cyclic</a></li>
                 </ul>
                 </div>
             <button class="add-panel-btn" id="addAssistant"><i class="bi bi-plus"></i> Add Panel</button>
+            <button class="header-btn" id="helpButton" title="Help"><i class="bi bi-question-circle"></i></button>
             <button class="header-btn" id="settingsButton" onclick="openSettings()"><i class="bi bi-gear"></i></button>
             </div>
         </div>
@@ -186,6 +190,81 @@
         </div>
     </div>
 
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Help &amp; Instructions</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Welcome to CoChat! Here are some tips to get started:</p>
+                    <ul>
+                        <li>Use the <b>Add Panel</b> button to create new assistant panels.</li>
+                        <li>Select a model for each panel before sending messages.</li>
+                        <li>Switch chat modes (Individual, Sequential, Cyclic) using the dropdown menu.</li>
+                        <li>Upload images or PDFs using the upload button if your model supports it.</li>
+                        <li>Click the <b>Generate Summary</b> button to summarize your conversation.</li>
+                        <li>Use the <b>Settings</b> button to configure server and theme options.</li>
+                        <li>Click <b>Stop Cycle</b> to halt cyclic mode at any time.</li>
+                    </ul>
+
+                    <hr>
+                    <h6>Chat Modes</h6>
+                    <ul>
+                        <li><b>Individual</b>: Each assistant panel operates independently. You can ask different questions or use different models in each panel without any connection between them.</li>
+                        <li><b>Sequential</b>: Panels are linked in a chain. After one assistant responds, its output is automatically sent as the prompt to the next panel, allowing for stepwise, collaborative reasoning or multi-stage workflows.</li>
+                        <li><b>Cyclic</b>: Responses are cycled from one panel to the next in a loop. After each assistant responds, its output is sent to the next panel, and this process continues through all panels until you stop the cycle. Useful for brainstorming or iterative refinement.</li>
+                    </ul>
+
+                    <h6>Postures</h6>
+                    <ul>
+                        <li><b>Professional</b>: Formal, respectful, and businesslike tone.</li>
+                        <li><b>Academic</b>: Scholarly, evidence-based, and references research or literature.</li>
+                        <li><b>Scholarly</b>: Deep, thoughtful, and analytical, with a focus on learning.</li>
+                        <li><b>Analytical</b>: Breaks down problems logically and methodically.</li>
+                        <li><b>Methodical</b>: Step-by-step, organized, and systematic approach.</li>
+                        <li><b>Casual</b>: Relaxed, friendly, and conversational style.</li>
+                        <li><b>Friendly</b>: Warm, approachable, and supportive tone.</li>
+                        <li><b>Concise</b>: Brief, to-the-point, and avoids unnecessary detail.</li>
+                        <li><b>Direct</b>: Straightforward, clear, and unambiguous communication.</li>
+                        <li><b>Creative</b>: Imaginative, original, and open to new ideas.</li>
+                        <li><b>Imaginative</b>: Uses vivid examples, analogies, and creative thinking.</li>
+                    </ul>
+
+                    <h6>Roles</h6>
+                    <ul>
+                        <li><b>Researcher</b>: Focuses on gathering, analyzing, and presenting factual information.</li>
+                        <li><b>Data Analyst</b>: Specializes in interpreting data, statistics, and trends.</li>
+                        <li><b>General Assistant</b>: Provides broad, helpful responses for a variety of tasks.</li>
+                        <li><b>Code Assistant</b>: Offers programming help, code generation, and debugging advice.</li>
+                        <li><b>Domain Expert</b>: Responds with deep, specialized knowledge in a specific field.</li>
+                        <li><b>Technical Expert</b>: Delivers detailed technical explanations and solutions.</li>
+                        <li><b>Writer</b>: Crafts well-structured, clear, and engaging written content.</li>
+                    </ul>
+
+                    <hr>
+                    <h6>Summary Generation</h6>
+                    <p>Click the <b>Generate Summary</b> button to create a summary of your conversation. You can choose from several summary types:</p>
+                    <ul>
+                        <li><b>Concise Summary</b>: A brief, high-level overview of the conversation.</li>
+                        <li><b>Detailed Summary</b>: A more thorough, in-depth summary covering all key points.</li>
+                        <li><b>WhatsApp Style</b>: Formats the summary to resemble a WhatsApp chat, with timestamps and participant names.</li>
+                        <li><b>Bullet Points</b>: Presents the summary as a list of bullet points for quick review.</li>
+                        <li><b>Executive Summary</b>: Focuses on actionable insights and high-level takeaways for decision-makers.</li>
+                    </ul>
+                    <p>You can select the model used for summarization. The summary will include all messages from all panels, formatted according to your chosen type.</p>
+                    <hr>
+                    <p>For more help, contact your administrator or check the documentation.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn header-btn" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let assistantCount = 1;
@@ -273,7 +352,7 @@
                     body.classList.remove('light-mode');
                     if (themeToggle) themeToggle.checked = true;
                     if (themeToggleLabel) themeToggleLabel.textContent = 'Night';
-                } else {
+                    } else {
                     root.classList.remove('dark-mode');
                     root.classList.add('light-mode');
                     body.classList.remove('dark-mode');
@@ -290,6 +369,15 @@
                     localStorage.setItem('theme', theme);
                     applyTheme(theme);
                 });
+            }
+            
+            // Setup help button handler
+            const helpButton = document.getElementById('helpButton');
+            if (helpButton) {
+                helpButton.onclick = function() {
+                    const modal = new bootstrap.Modal(document.getElementById('helpModal'));
+                    modal.show();
+                };
             }
             
             // Rest of your initialization code...
@@ -1684,17 +1772,17 @@
                     
                     const lines = data.summary.split('\n');
                     let formattedLines;
-
+                        
                     if (summaryType === 'bullet') {
                         formattedLines = lines.map(line => {
                             if (!line.trim()) return '';
                             if (line.trim().startsWith('-') || line.trim().startsWith('•')) {
-                                return `<div class="bullet-point">${line}</div>`;
-                            }
+                            return `<div class="bullet-point">${line}</div>`;
+                        }
                             if (line.match(/^[A-Z][\w\s]+:$/)) {
-                                return `<div class="section-header">${line}</div>`;
-                            }
-                            return `<div class="text-line">${line}</div>`;
+                            return `<div class="section-header">${line}</div>`;
+                        }
+                        return `<div class="text-line">${line}</div>`;
                         });
                     } else if (summaryType === 'executive' || summaryType === 'detailed') {
                         formattedLines = lines.map(line => {
@@ -1710,7 +1798,7 @@
                             return `<div class="text-line">${line}</div>`;
                         });
                     }
-
+                    
                     contentDiv.innerHTML = formattedLines.join('');
                     summaryDiv.appendChild(contentDiv);
                 }

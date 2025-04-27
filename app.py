@@ -372,7 +372,6 @@ def chat():
             def generate():
                 full_response = ""  # Track the complete response
                 response_id = str(uuid.uuid4())  # Generate unique ID for this response
-                
                 try:
                     response = requests.post(
                         f"{server_url}/v1/chat/completions",
@@ -381,12 +380,10 @@ def chat():
                         stream=True,
                         timeout=LONG_REQUEST_TIMEOUT
                     )
-                    
                     if not response.ok:
                         error_data = response.json()
                         yield f"data: {json.dumps({'error': error_data.get('error', 'Unknown error')})}\n\n"
                         return
-                    
                     for line in response.iter_lines():
                         if line:
                             try:
@@ -395,7 +392,6 @@ def chat():
                                     data = line[6:]
                                     if data == '[DONE]':
                                         if mode == 'sequential':
-                                            # Send the complete response for sequential mode
                                             complete_data = {
                                                 'id': f'chatcmpl-{response_id}',
                                                 'object': 'chat.completion.chunk',
@@ -409,8 +405,8 @@ def chat():
                                                     },
                                                     'finish_reason': 'stop'
                                                 }],
-                                                'complete_response': True,  # Flag for frontend
-                                                'sequential_mode': True     # Additional flag for sequential mode
+                                                'complete_response': True,
+                                                'sequential_mode': True
                                             }
                                             yield f"data: {json.dumps(complete_data)}\n\n"
                                         yield 'data: [DONE]\n\n'
@@ -421,8 +417,7 @@ def chat():
                                                 delta = json_data['choices'][0].get('delta', {})
                                                 if 'content' in delta:
                                                     content = delta['content']
-                                                    full_response += content  # Accumulate the response
-                                                    # Format response to match LM Studio's format
+                                                    full_response += content
                                                     response_data = {
                                                         'id': f'chatcmpl-{response_id}',
                                                         'object': 'chat.completion.chunk',
@@ -444,9 +439,8 @@ def chat():
                                             print(f"Error processing line: {e}")
                                             yield f"data: {json.dumps({'error': f'Stream processing error: {str(e)}'})}\n\n"
                             except Exception as e:
-                                print(f"Error in stream generation: {e}")
-                                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                                yield 'data: [DONE]\n\n'
+                                print(f"Error processing line: {e}")
+                                yield f"data: {json.dumps({'error': f'Stream processing error: {str(e)}'})}\n\n"
                 except Exception as e:
                     print(f"Error in stream generation: {e}")
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -530,8 +524,8 @@ def summarize():
         # Now add as many messages as possible from the end
         for msg in reversed(conversation[1:]):
             block = (
-                f"Panel {msg['panel']} - {msg['panelTitle']}\n"
-                f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
+        f"Panel {msg['panel']} - {msg['panelTitle']}\n"
+        f"{'Question' if msg['type'] == 'question' else 'Response'} ({msg['timestamp']}):\n"
                 f"{msg['content']}\n\n"
             )
             block_tokens = count_tokens(block)
@@ -712,10 +706,8 @@ def upload_file():
         
         # Handle PDF files
         if file_extension == 'pdf':
-            # Save PDF temporarily
             pdf_path = os.path.join(UPLOAD_FOLDER, f"{filename}.pdf")
             file.save(pdf_path)
-            
             try:
                 # Process PDF with OCR model
                 extracted_text = process_pdf(pdf_path)
@@ -724,10 +716,8 @@ def upload_file():
                     text_path = os.path.join(UPLOAD_FOLDER, f"{filename}.txt")
                     with open(text_path, 'w', encoding='utf-8') as f:
                         f.write(extracted_text)
-                    
                     # Clean up PDF file
                     os.remove(pdf_path)
-                    
                     return jsonify({
                         'success': True,
                         'filename': f"{filename}.txt",
@@ -744,7 +734,6 @@ def upload_file():
                 # Clean up PDF file if it still exists
                 if os.path.exists(pdf_path):
                     os.remove(pdf_path)
-        
         # Handle image files
         else:
             try:
@@ -752,17 +741,13 @@ def upload_file():
                 with Image.open(file) as img:
                     # Optimize image for vision models
                     optimized_img = optimize_image(img)
-                    
                     # Save processed image as PNG to preserve quality
                     img_path = os.path.join(UPLOAD_FOLDER, f"{filename}.png")
                     optimized_img.save(img_path, format='PNG', optimize=True)
-                    
                     # Get image dimensions for response
                     width, height = optimized_img.size
-                    
                     # Clear memory
                     optimized_img.close()
-                    
                     return jsonify({
                         'success': True,
                         'filename': f"{filename}.png",
@@ -962,14 +947,11 @@ def generate():
                             try:
                                 decoded_line = line.decode('utf-8')
                                 print(f"Debug - Raw line: {decoded_line}")  # Debug line
-                                
                                 if decoded_line.startswith('data:'):
                                     data_content = decoded_line[6:].strip()
-                                    
                                     # Skip empty data or [DONE]
                                     if not data_content or data_content == '[DONE]':
                                         continue
-                                    
                                     try:
                                         data = json.loads(data_content)
                                         if 'choices' in data and len(data['choices']) > 0:
@@ -996,7 +978,6 @@ def generate():
                                     "content": str(e)
                                 }
                                 yield f"data: {json.dumps(error_data)}\n\n"
-                    
                     # Send done message
                     yield "data: {\"type\": \"done\"}\n\n"
                 except Exception as e:
@@ -1007,7 +988,6 @@ def generate():
                     }
                     yield f"data: {json.dumps(error_data)}\n\n"
                     yield "data: {\"type\": \"done\"}\n\n"
-            
             return Response(generate(), mimetype='text/event-stream')
         else:
             # Handle non-streaming response
