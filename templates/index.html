@@ -10,6 +10,53 @@
     <style>
       #helpButton { display: inline-flex !important; }
     </style>
+    <style>
+      .panel-header-controls .btn-clear,
+      .panel-header-controls .btn-close,
+      .panel-header-controls .panel-history-btn,
+      .panel-header-controls .header-btn {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        background: transparent;
+        border: none;
+        margin-left: 4px;
+        margin-right: 0;
+        font-size: 1.1rem;
+        color: #d1d5db;
+        transition: background 0.15s, color 0.15s;
+      }
+      .panel-header-controls .btn-close {
+        color: #ff4d4f; /* bright red for visibility */
+        opacity: 1 !important;
+      }
+      .panel-header-controls .btn-clear:hover,
+      .panel-header-controls .btn-close:hover,
+      .panel-header-controls .panel-history-btn:hover,
+      .panel-header-controls .header-btn:hover {
+        background: #f0f2f5;
+        color: #111;
+      }
+      .panel-header-controls .btn-close:hover {
+        background: #ffeaea;
+        color: #e74c3c;
+      }
+      .panel-header-controls .btn-clear:active,
+      .panel-header-controls .btn-close:active,
+      .panel-header-controls .panel-history-btn:active,
+      .panel-header-controls .header-btn:active {
+        background: #e0e3e8;
+        color: #0d6efd;
+      }
+      .panel-header-controls .btn-close:active {
+        background: #ffd6d6;
+        color: #c0392b;
+      }
+    </style>
 </head>
 <body>
     <div class="app-header">
@@ -58,6 +105,7 @@
                     <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                         <i class="bi bi-trash"></i>
                     </button>
+                    <button class="header-btn panel-history-btn" title="Chat History" onclick="openChatHistoryModal()"><i class="bi bi-clock-history"></i></button>
                     <button class="btn-close" onclick="removeAssistant(this.closest('.chat-panel').id)" title="Close panel">
                         <i class="bi bi-x-lg"></i>
                     </button>
@@ -305,6 +353,35 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn header-btn" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Login/Register Modal -->
+    <div class="modal fade" id="authModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="authModalTitle">Login</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="authForm">
+              <div class="mb-3">
+                <label for="authUsername" class="form-label">Username</label>
+                <input type="text" class="form-control" id="authUsername" required>
+              </div>
+              <div class="mb-3">
+                <label for="authPassword" class="form-label">Password</label>
+                <input type="password" class="form-control" id="authPassword" required>
+              </div>
+              <div id="authError" class="text-danger mb-2" style="display:none;"></div>
+              <button type="submit" class="btn add-panel-btn w-100" id="authSubmitBtn">Login</button>
+            </form>
+            <div class="mt-3 text-center">
+              <span id="toggleAuthMode">Don't have an account? <a href="#" id="showRegister">Register</a></span>
+            </div>
           </div>
         </div>
       </div>
@@ -662,6 +739,7 @@
                         <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                             <i class="bi bi-trash"></i>
                         </button>
+                        <button class="header-btn panel-history-btn" title="Chat History" onclick="openChatHistoryModal()"><i class="bi bi-clock-history"></i></button>
                         <button class="btn-close" onclick="removeAssistant(this.closest('.chat-panel').id)" title="Close panel">
                             <i class="bi bi-x-lg"></i>
                         </button>
@@ -2668,6 +2746,243 @@
           }
         `;
         document.head.appendChild(adaptFlashStyle);
+
+        // --- Auth Modal Logic ---
+        let isLoginMode = true;
+        function showAuthModal(loginMode = true) {
+          isLoginMode = loginMode;
+          document.getElementById('authModalTitle').textContent = loginMode ? 'Login' : 'Register';
+          document.getElementById('authSubmitBtn').textContent = loginMode ? 'Login' : 'Register';
+          document.getElementById('toggleAuthMode').innerHTML = loginMode ?
+            `Don't have an account? <a href="#" id="showRegister">Register</a>` :
+            `Already have an account? <a href="#" id="showLogin">Login</a>`;
+          document.getElementById('authError').style.display = 'none';
+          document.getElementById('authForm').reset();
+          const modal = new bootstrap.Modal(document.getElementById('authModal'));
+          modal.show();
+          setTimeout(() => {
+            document.getElementById('authUsername').focus();
+            document.getElementById('showRegister')?.addEventListener('click', e => { e.preventDefault(); showAuthModal(false); });
+            document.getElementById('showLogin')?.addEventListener('click', e => { e.preventDefault(); showAuthModal(true); });
+          }, 200);
+        }
+
+        async function handleAuthSubmit(e) {
+          e.preventDefault();
+          const username = document.getElementById('authUsername').value.trim();
+          const password = document.getElementById('authPassword').value;
+          const url = isLoginMode ? '/login' : '/register';
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await res.json();
+          if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('authModal')).hide();
+            // Remove lingering modal-backdrop and reset body
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style = '';
+            showToast(isLoginMode ? 'Login successful!' : 'Registration successful! Please log in.', 'success');
+            if (isLoginMode) {
+              await fetchUserData();
+              setAuthUI(true);
+            } else {
+              showAuthModal(true);
+            }
+          } else {
+            document.getElementById('authError').textContent = data.error || 'Authentication failed.';
+            document.getElementById('authError').style.display = 'block';
+          }
+        }
+
+        document.getElementById('authForm').addEventListener('submit', handleAuthSubmit);
+
+        // --- Auth UI State ---
+        function setAuthUI(isLoggedIn) {
+          // Show/hide UI elements as needed
+          // For demo: just show a logout button in the header
+          let logoutBtn = document.getElementById('logoutBtn');
+          if (!logoutBtn) {
+            logoutBtn = document.createElement('button');
+            logoutBtn.id = 'logoutBtn';
+            logoutBtn.className = 'header-btn';
+            logoutBtn.title = 'Logout';
+            logoutBtn.innerHTML = '<i class="bi bi-box-arrow-right"></i>';
+            document.querySelector('.header-controls').appendChild(logoutBtn);
+            logoutBtn.addEventListener('click', async () => {
+              await fetch('/logout', { method: 'POST' });
+              setAuthUI(false);
+              showAuthModal(true);
+            });
+          }
+          logoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
+        }
+
+        // --- Fetch User Data (Chat History & Settings) ---
+        async function fetchUserData() {
+          // Fetch chat history
+          try {
+            const res = await fetch('/chat_history');
+            if (res.ok) {
+              const history = await res.json();
+              // TODO: Populate chat history modal with this data
+              window.userChatHistory = history;
+            }
+          } catch {}
+          // Fetch settings
+          try {
+            const res = await fetch('/settings');
+            if (res.ok) {
+              const settings = await res.json();
+              // TODO: Apply settings to UI
+              window.userSettings = settings;
+            }
+          } catch {}
+        }
+
+        // --- On Page Load: Check Auth ---
+        (async function() {
+          // Try to fetch user data; if not logged in, show login modal
+          let loggedIn = false;
+          try {
+            const res = await fetch('/chat_history');
+            if (res.ok) {
+              loggedIn = true;
+              await fetchUserData();
+            }
+          } catch {}
+          setAuthUI(loggedIn);
+          if (!loggedIn) showAuthModal(true);
+        })();
+
+        // --- Chat History Modal: Use Backend Data ---
+        async function loadChatHistoryFromBackend() {
+          try {
+            const res = await fetch('/chat_history');
+            if (res.ok) {
+              const history = await res.json();
+              window.userChatHistory = history;
+              renderChatHistory(history);
+              populateChatHistoryFilters();
+              updateChatHistoryModal();
+            }
+          } catch (e) {
+            renderChatHistory([]);
+          }
+        }
+
+        // Patch chat history modal open event to load from backend
+        setTimeout(() => {
+          const chatHistoryModal = document.getElementById('chatHistoryModal');
+          if (chatHistoryModal) {
+            chatHistoryModal.addEventListener('show.bs.modal', () => {
+              loadChatHistoryFromBackend();
+            });
+          }
+        }, 500);
+
+        // On message send, POST to backend
+        const originalSendMessageWithBackend = window.sendMessage;
+        window.sendMessage = async function(button) {
+          const panel = button.closest('.chat-panel');
+          const textarea = panel.querySelector('.prompt-input');
+          const message = textarea.value.trim();
+          if (!message) return originalSendMessageWithBackend.apply(this, arguments);
+          // Save to backend
+          try {
+            await fetch('/chat_history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                panel: panel.id,
+                sender: 'User',
+                content: message
+              })
+            });
+          } catch {}
+          return originalSendMessageWithBackend.apply(this, arguments);
+        };
+
+        // On clear chat, DELETE from backend
+        function clearChat(button) {
+          const panel = button.closest('.chat-panel');
+          const chatWindow = panel.querySelector('.chat-window');
+          chatWindow.innerHTML = '';
+          fetch('/chat_history', { method: 'DELETE' });
+        }
+
+        // --- Settings Modal: Sync with Backend ---
+        async function loadSettingsFromBackend() {
+          try {
+            const res = await fetch('/settings');
+            if (res.ok) {
+              const settings = await res.json();
+              // Example: apply theme
+              if (settings.theme) {
+                localStorage.setItem('theme', settings.theme);
+                // Apply theme immediately
+                const root = document.documentElement;
+                const body = document.body;
+                if (settings.theme === 'dark') {
+                  root.classList.add('dark-mode');
+                  root.classList.remove('light-mode');
+                  body.classList.add('dark-mode');
+                  body.classList.remove('light-mode');
+                } else {
+                  root.classList.remove('dark-mode');
+                  root.classList.add('light-mode');
+                  body.classList.remove('dark-mode');
+                  body.classList.add('light-mode');
+                }
+              }
+              // Example: apply server_url
+              if (settings.lm_url) {
+                localStorage.setItem('lmStudioUrl', settings.lm_url);
+              }
+              window.userSettings = settings;
+            }
+          } catch {}
+        }
+
+        // On settings modal open, load from backend
+        setTimeout(() => {
+          const settingsModal = document.getElementById('settingsModal');
+          if (settingsModal) {
+            settingsModal.addEventListener('show.bs.modal', () => {
+              loadSettingsFromBackend();
+            });
+          }
+        }, 500);
+
+        // On save settings, POST to backend
+        function saveSettings() {
+          // Save server URLs
+          const serverUrls = Array.from(document.querySelectorAll('.server-url'))
+            .map(input => input.value.trim())
+            .filter(url => url !== '');
+          const theme = localStorage.getItem('theme') || 'dark';
+          const settings = {
+            lm_url: serverUrls[0] || '',
+            theme: theme
+          };
+          fetch('/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+          }).then(res => res.json()).then(data => {
+            if (data.success) {
+              showToast('Settings saved to backend', 'success');
+            }
+          });
+          // ...existing save logic...
+        }
+
+        function openChatHistoryModal() {
+          const modal = new bootstrap.Modal(document.getElementById('chatHistoryModal'));
+          modal.show();
+        }
     </script>
 </body>
 </html>

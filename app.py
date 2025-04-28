@@ -17,29 +17,40 @@ import pytesseract
 from pathlib import Path
 import uuid
 import tiktoken  # Add this import at the top if not present
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import db, User, ChatHistory, UserSettings
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Add this near the top
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///yourdb.sqlite3'
+
+db.init_app(app)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 # Default LM Studio server URL
 LM_STUDIO_SERVER = 'http://192.168.50.10:3500'  # Updated to the correct IP address
 
 # Add configuration for uploads
-UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'heic', 'heif'}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_IMAGE_DIMENSION = 1024  # Maximum dimension for vision models
 IMAGE_QUALITY = 85  # JPEG quality setting
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Request timeout settings
 REQUEST_TIMEOUT = 60  # Increased from 30 to 60 seconds
 LONG_REQUEST_TIMEOUT = 300  # Increased from 120 to 300 seconds for model operations
 
 # Ensure upload folder exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Add these variables after other global variables
 MODEL_CACHE = {
@@ -56,47 +67,22 @@ def index():
     return render_template('index.html')
 
 @app.route('/settings', methods=['GET', 'POST'])
+@login_required
 def settings():
-    global LM_STUDIO_SERVER  # Move global declaration to top of function
-    
-    if request.method == 'POST':
-        try:
-            if request.is_json:
-                data = request.json
-                server_url = data.get('server_url', LM_STUDIO_SERVER)
-                
-                if server_url:
-                    # Clean up the URL before saving
-                    # Ensure it doesn't end with /v1 (we'll add that when needed)
-                    if server_url.endswith('/v1'):
-                        server_url = server_url[:-3]
-                    # Ensure it doesn't end with a slash
-                    if server_url.endswith('/'):
-                        server_url = server_url[:-1]
-                    
-                    # Save to session
-                    session['lm_studio_url'] = server_url
-                    print(f"Saved LM Studio URL to session: {server_url}")
-                    
-                    # Also update the global variable for current requests
-                    LM_STUDIO_SERVER = server_url
-                    
-                    # Clear cached models to force refresh
-                    if 'cached_models' in session:
-                        session.pop('cached_models')
-                    
-                    return jsonify({"success": True, "message": "Settings saved"})
-                else:
-                    return jsonify({"success": False, "message": "No server URL provided"}), 400
+    if request.method == 'GET':
+        settings = UserSettings.query.filter_by(user_id=current_user.id).all()
+        return jsonify({s.key: s.value for s in settings})
+    elif request.method == 'POST':
+        data = request.json
+        for key, value in data.items():
+            s = UserSettings.query.filter_by(user_id=current_user.id, key=key).first()
+            if s:
+                s.value = value
             else:
-                return jsonify({"success": False, "message": "Expected JSON data"}), 400
-        except Exception as e:
-            print(f"Error saving settings: {str(e)}")
-            return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
-    
-    # Get saved URL from session or use default
-    lm_url = session.get('lm_studio_url', LM_STUDIO_SERVER)
-    return render_template('settings.html', lm_url=lm_url)
+                s = UserSettings(user_id=current_user.id, key=key, value=value)
+                db.session.add(s)
+        db.session.commit()
+        return jsonify({'success': True})
 
 @app.route('/models', methods=['GET', 'POST'])
 def models():
@@ -706,14 +692,14 @@ def upload_file():
         
         # Handle PDF files
         if file_extension == 'pdf':
-            pdf_path = os.path.join(UPLOAD_FOLDER, f"{filename}.pdf")
+            pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{filename}.pdf")
             file.save(pdf_path)
             try:
                 # Process PDF with OCR model
                 extracted_text = process_pdf(pdf_path)
                 if extracted_text:
                     # Save extracted text
-                    text_path = os.path.join(UPLOAD_FOLDER, f"{filename}.txt")
+                    text_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{filename}.txt")
                     with open(text_path, 'w', encoding='utf-8') as f:
                         f.write(extracted_text)
                     # Clean up PDF file
@@ -742,7 +728,7 @@ def upload_file():
                     # Optimize image for vision models
                     optimized_img = optimize_image(img)
                     # Save processed image as PNG to preserve quality
-                    img_path = os.path.join(UPLOAD_FOLDER, f"{filename}.png")
+                    img_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{filename}.png")
                     optimized_img.save(img_path, format='PNG', optimize=True)
                     # Get image dimensions for response
                     width, height = optimized_img.size
@@ -851,9 +837,9 @@ def process_pdf(file_path):
 def get_file(file_id):
     try:
         # Find the file
-        for filename in os.listdir(UPLOAD_FOLDER):
+        for filename in os.listdir(app.config['UPLOAD_FOLDER']):
             if file_id in filename:
-                return send_from_directory(UPLOAD_FOLDER, filename)
+                return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
         return "File not found", 404
     except Exception as e:
         print(f"Error retrieving file: {e}")
@@ -1005,5 +991,60 @@ def generate():
     except Exception as e:
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Username already exists'}), 400
+    user = User(username=data['username'], password_hash=generate_password_hash(data['password']))
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    user = User.query.filter_by(username=data['username']).first()
+    if user and check_password_hash(user.password_hash, data['password']):
+        login_user(user)
+        return jsonify({'success': True})
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({'success': True})
+
+@app.route('/chat_history', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def chat_history():
+    if request.method == 'GET':
+        history = ChatHistory.query.filter_by(user_id=current_user.id).all()
+        return jsonify([{
+            'id': h.id,
+            'panel': h.panel,
+            'sender': h.sender,
+            'content': h.content,
+            'timestamp': h.timestamp.isoformat()
+        } for h in history])
+    elif request.method == 'POST':
+        data = request.json
+        h = ChatHistory(
+            user_id=current_user.id,
+            panel=data.get('panel'),
+            sender=data.get('sender'),
+            content=data.get('content')
+        )
+        db.session.add(h)
+        db.session.commit()
+        return jsonify({'success': True})
+    elif request.method == 'DELETE':
+        ChatHistory.query.filter_by(user_id=current_user.id).delete()
+        db.session.commit()
+        return jsonify({'success': True})
+
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
