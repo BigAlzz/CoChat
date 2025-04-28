@@ -1,5 +1,5 @@
 import { Paper, Text, Box, Loader, Group, ActionIcon, Modal, Button, Select, Stack } from '@mantine/core';
-import { IconMicrophone, IconVolume, IconMaximize, IconX, IconBulb, IconMessage, IconSearch, IconBrain } from '@tabler/icons-react';
+import { IconMicrophone, IconVolume, IconMaximize, IconX, IconBulb, IconMessage, IconSearch, IconBrain, IconUser, IconRobot, IconInfoCircle, IconAlertTriangle, IconCheck, IconClock, IconRefresh } from '@tabler/icons-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAudioStore } from '../utils/audio';
 import AudioManager from '../utils/AudioManager';
@@ -12,6 +12,9 @@ interface MessageProps {
   assistantName?: string;
   onSpeechInput?: (text: string) => void;
   onDelete?: () => void;
+  timestamp?: string;
+  status?: 'pending' | 'sent' | 'failed' | 'thinking' | 'streaming' | 'complete' | 'error';
+  senderName?: string;
 }
 
 // Add CSS for animations
@@ -46,7 +49,81 @@ if (typeof window !== 'undefined' && !document.getElementById('message-animation
   document.head.appendChild(style);
 }
 
-export default function Message({ content, role, isThinking = false, assistantName, onSpeechInput, onDelete }: MessageProps) {
+// Add this component for animated thinking dots
+function ThinkingDots() {
+  return (
+    <span className="thinking-dots">
+      <span>.</span>
+      <span>.</span>
+      <span>.</span>
+      <style>
+        {`
+          .thinking-dots span {
+            animation: blink 1.2s infinite;
+            opacity: 0.7;
+            margin: 0 2px;
+            font-size: 1.5em;
+          }
+          .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+          .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+          @keyframes blink {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 0.2; }
+          }
+        `}
+      </style>
+    </span>
+  );
+}
+
+// Helper for formatting timestamps
+function formatTimestamp(ts?: string) {
+  if (!ts) return '';
+  const date = new Date(ts);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  return isToday
+    ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Avatar/icon by role
+function getAvatar(role: string) {
+  switch (role) {
+    case 'assistant':
+      return <IconRobot size={28} color="#00B894" style={{ background: '#e6fff9', borderRadius: '50%', padding: 2 }} />;
+    case 'system':
+      return <IconInfoCircle size={28} color="#6366f1" style={{ background: '#eef2ff', borderRadius: '50%', padding: 2 }} />;
+    case 'error':
+      return <IconAlertTriangle size={28} color="#e74c3c" style={{ background: '#fff0f0', borderRadius: '50%', padding: 2 }} />;
+    default:
+      return <IconUser size={28} color="#6366f1" style={{ background: '#e0e7ff', borderRadius: '50%', padding: 2 }} />;
+  }
+}
+
+// Status indicator
+function getStatusIndicator(status?: string) {
+  switch (status) {
+    case 'pending':
+      return <IconClock size={16} color="#f1c40f" title="Pending" />;
+    case 'sent':
+      return <IconCheck size={16} color="#00B894" title="Sent" />;
+    case 'failed':
+      return <IconAlertTriangle size={16} color="#e74c3c" title="Failed" />;
+    case 'thinking':
+      return <ThinkingDots />;
+    case 'streaming':
+      return <IconRefresh size={16} color="#6366f1" className="spin" title="Streaming" />;
+    case 'complete':
+      return <IconCheck size={16} color="#00B894" title="Complete" />;
+    case 'error':
+      return <IconAlertTriangle size={16} color="#e74c3c" title="Error" />;
+    default:
+      return null;
+  }
+}
+
+export default function Message({ content, role, isThinking = false, assistantName, onSpeechInput, onDelete, timestamp, status, senderName }: MessageProps) {
   const [isListening, setIsListening] = useState(false);
   const [isReading, setIsReading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -103,19 +180,8 @@ export default function Message({ content, role, isThinking = false, assistantNa
     if (isReading) {
       if (isPaused) {
         setIsPaused(false);
-        try {
-          await AudioManager.getInstance().resumeSpeaking();
-        } catch (error) {
-          console.error('Error resuming speech:', error);
-          notifications.show({
-            title: 'Error',
-            message: error instanceof Error ? error.message : 'Failed to resume reading',
-            color: 'red'
-          });
-        }
       } else {
         setIsPaused(true);
-        AudioManager.getInstance().pauseSpeaking();
       }
       return;
     }
@@ -173,13 +239,13 @@ export default function Message({ content, role, isThinking = false, assistantNa
         const regex = new RegExp(`<${def.tag}>([\s\S]*?)<\/${def.tag}>`, 'i');
         const match = remaining.match(regex);
         if (match) {
-          const before = remaining.slice(0, match.index);
+          const before = typeof match.index === 'number' ? remaining.slice(0, match.index) : '';
           if (before.trim()) {
             // Add any text before the tag as a generic section
             sections.push({ tag: 'other', content: before.trim(), icon: null, style: { color: '#bbb' } });
           }
           sections.push({ tag: def.tag, content: match[1].trim(), icon: def.icon, style: def.style });
-          remaining = remaining.slice(match.index + match[0].length);
+          remaining = typeof match.index === 'number' ? remaining.slice(match.index + match[0].length) : '';
           found = true;
           break;
         }
@@ -267,140 +333,115 @@ export default function Message({ content, role, isThinking = false, assistantNa
   // Don't render empty messages unless thinking
   if (!content && !isThinking) return null;
 
+  // Bubble color by role
+  const bubbleStyles: Record<string, React.CSSProperties> = {
+    user: {
+      background: 'linear-gradient(135deg, #e0e7ff 0%, #b3ffe6 100%)',
+      color: '#222',
+      alignSelf: 'flex-end',
+      borderTopRightRadius: 0,
+    },
+    assistant: {
+      background: 'linear-gradient(135deg, #e6fff9 0%, #d1f7ff 100%)',
+      color: '#222',
+      alignSelf: 'flex-start',
+      borderTopLeftRadius: 0,
+    },
+    system: {
+      background: '#eef2ff',
+      color: '#6366f1',
+      alignSelf: 'center',
+      borderRadius: 16,
+      fontStyle: 'italic',
+    },
+    error: {
+      background: '#fff0f0',
+      color: '#e74c3c',
+      alignSelf: 'center',
+      borderRadius: 16,
+      fontStyle: 'italic',
+    },
+  };
+  const bubbleStyle = bubbleStyles[role] || bubbleStyles['user'];
+
+  // Animation for new bubbles
+  const bubbleAnim = {
+    animation: 'fadeInUp 0.4s cubic-bezier(.23,1.01,.32,1)'
+  };
+
+  // Add keyframes for fadeInUp
+  if (typeof window !== 'undefined' && !document.getElementById('bubble-animations')) {
+    const style = document.createElement('style');
+    style.id = 'bubble-animations';
+    style.innerHTML = `
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .spin { animation: spin 1s linear infinite; }
+    `;
+    document.head.appendChild(style);
+  }
+
   return (
-    <>
-      <Paper
-        shadow="sm"
-        p="md"
-        withBorder
-        style={{
-          backgroundColor: role === 'assistant' ? '#1A1B1E' : '#25262B',
-          marginBottom: '1rem',
-          cursor: 'pointer'
-        }}
-        onClick={() => !isThinking && setShowModal(true)}
-        draggable
-        onDragStart={(e) => {
-          e.stopPropagation();
-          e.dataTransfer.setData('text/plain', content);
-          e.dataTransfer.effectAllowed = 'copy';
-          // Add visual feedback
-          const element = e.currentTarget as HTMLElement;
-          element.style.opacity = '0.5';
-        }}
-        onDragEnd={(e) => {
-          // Reset visual feedback
-          const element = e.currentTarget as HTMLElement;
-          element.style.opacity = '1';
-        }}
-      >
-        <Group justify="space-between" mb={4}>
-          <Text size="sm" c="dimmed">
-            {role === 'assistant' ? assistantName || 'Assistant' : 'You'}
+    <Box style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 8, flexDirection: role === 'user' ? 'row-reverse' : 'row' }}>
+      {/* Avatar */}
+      <Box style={{ flexShrink: 0 }}>{getAvatar(role)}</Box>
+      {/* Bubble */}
+      <Box style={{ ...bubbleStyle, borderRadius: 16, padding: '12px 18px', minWidth: 60, maxWidth: 480, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', ...bubbleAnim, position: 'relative' }}>
+        {/* Sender name and status */}
+        <Group justify="space-between" align="center" mb={4} style={{ marginBottom: 4 }}>
+          <Text size="xs" c="dimmed" style={{ fontWeight: 600 }}>
+            {senderName || (role === 'assistant' ? assistantName || 'Assistant' : role === 'user' ? 'You' : role.charAt(0).toUpperCase() + role.slice(1))}
           </Text>
-          <Group gap="xs">
-            {!isThinking && content && (
-              <ActionIcon
-                variant={isReading ? "filled" : "light"}
-                color={isReading ? (isPaused ? "yellow" : "blue") : "gray"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleModalRead();
-                }}
-                disabled={isMuted}
-              >
-                <IconVolume size={16} />
-              </ActionIcon>
-            )}
-            <ActionIcon
-              variant="light"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowModal(true);
-              }}
-            >
-              <IconMaximize size={16} />
-            </ActionIcon>
-            {onDelete && (
-              <ActionIcon
-                variant="light"
-                color="red"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <IconX size={16} />
-              </ActionIcon>
-            )}
-          </Group>
+          <Box>{getStatusIndicator(isThinking ? 'thinking' : status)}</Box>
         </Group>
-        {isThinking ? (
-          <Box style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {parseSectionsAll(content).map((section, idx) => {
-              const isActive = displayedSections[idx].length < section.content.length && (displayedSections[idx].length > 0 || idx === 0 || displayedSections[idx - 1] === section.content);
-              return (
-                <Box key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {getAnimatedIcon(section.tag, isActive)}
-                  <Text size="sm" style={{ fontFamily: 'monospace', letterSpacing: '0.02em', ...section.style }}>{displayedSections[idx]}</Text>
-                </Box>
-              );
-            })}
-          </Box>
-        ) : (
-          <Box style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {parseSectionsAll(content).map((section, idx) => (
+        {/* Message content */}
+        <Box style={{ marginBottom: 4 }}>
+          {isThinking && role === 'assistant' ? (
+            <ThinkingDots />
+          ) : (
+            parseSectionsAll(content).map((section, idx) => (
               <Box key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {getAnimatedIcon(section.tag, false)}
                 <Text size="sm" style={{ fontFamily: 'monospace', letterSpacing: '0.02em', ...section.style }}>{section.content}</Text>
               </Box>
-            ))}
-          </Box>
-        )}
-      </Paper>
-
-      <Modal
-        opened={showModal}
-        onClose={() => {
-          setShowModal(false);
-          if (isReading) {
-            AudioManager.getInstance().stopSpeaking();
-            setIsReading(false);
-            setIsPaused(false);
-          }
-        }}
-        title={role === 'assistant' ? assistantName || 'Assistant' : 'You'}
-        size="xl"
-      >
-        <Stack gap="md">
-          <Group justify="space-between">
-            <Select
-              label="Select Voice"
-              placeholder="Choose a voice"
-              data={voices}
-              value={selectedVoice}
-              onChange={(value) => {
-                setSelectedVoice(value || '');
-                if (value) {
-                  AudioManager.getInstance().setVoice(value);
-                }
-              }}
-              style={{ width: '300px' }}
-            />
-            <Button
+            ))
+          )}
+        </Box>
+        {/* Timestamp */}
+        <Text size="xs" c="dimmed" style={{ position: 'absolute', right: 12, bottom: 6, fontSize: 11 }}>{formatTimestamp(timestamp)}</Text>
+        {/* Controls (delete, TTS, etc.) */}
+        <Group gap="xs" style={{ position: 'absolute', left: 12, bottom: 6 }}>
+          {!isThinking && content && (
+            <ActionIcon
               variant={isReading ? "filled" : "light"}
-              color={isReading ? "red" : "blue"}
-              onClick={handleModalRead}
-              leftSection={<IconVolume size={16} />}
-              loading={isReading}
+              color={isReading ? (isPaused ? "yellow" : "blue") : "gray"}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleModalRead();
+              }}
               disabled={isMuted}
+              size="xs"
             >
-              {isReading ? 'Stop Reading' : 'Read'}
-            </Button>
-          </Group>
-          <Text style={{ whiteSpace: 'pre-wrap' }}>{content}</Text>
-        </Stack>
-      </Modal>
-    </>
+              <IconVolume size={14} />
+            </ActionIcon>
+          )}
+          {onDelete && (
+            <ActionIcon
+              variant="light"
+              color="red"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              size="xs"
+            >
+              <IconX size={14} />
+            </ActionIcon>
+          )}
+        </Group>
+      </Box>
+    </Box>
   );
 } 

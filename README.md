@@ -145,3 +145,92 @@ Pull requests and issues are welcome! Please:
 
 ## License
 MIT License
+
+ere is a comprehensive description and specification of all the features in each chat window of the CoChat application, focusing on both visible user interface behaviors and underlying logic:
+
+CoChat Chat Window: Feature Specification
+1. Chat Window Layout & Components
+Message List Area:
+Displays the conversation history, with each message clearly separated. Messages are visually grouped by sender (user, assistant, or system), and include timestamps, sender avatars/icons, and message status indicators (e.g., sent, pending, failed).
+Input Area:
+Text input box for composing messages.
+“Send” button (can be triggered by Enter key).
+Optional buttons for attachments, voice input, or special commands.
+Toolbar/Settings:
+Model selector (choose between different AI models).
+Role selector (set system prompt or persona).
+Posture selector (e.g., “creative”, “precise”, etc.).
+Export/Import options for chat history (e.g., export to PDF).
+Persistent Settings:
+User preferences for model, role, posture, and other options are saved and automatically restored per chat.
+2. Message Types & Handling
+User Message:
+Sent by the user.
+Shows immediately in the chat window with a “pending” status until acknowledged by the backend.
+If sending fails, displays an error and allows retry.
+Assistant Message:
+Sent by the AI assistant.
+May be streamed in real-time (token-by-token or chunked), with partial content shown as it arrives.
+Includes a “thinking” animation while the assistant is generating a response.
+System Message:
+Used for notifications, warnings, or status updates (e.g., “Model changed”, “Connection lost”).
+Styled distinctly from user/assistant messages.
+Error Message:
+Clearly indicates errors (e.g., network issues, backend errors).
+Provides actionable feedback or retry options.
+3. Thinking & Animation Features
+Thinking Animation:
+When the assistant is generating a response, a dynamic animation is shown (e.g., animated dots, pulsing icon, or “AI is thinking…” message).
+Animation is smooth and visually distinct, indicating the assistant is actively processing.
+The animation persists until the first chunk of the assistant’s reply is received.
+Streaming Output:
+Assistant responses appear incrementally, simulating real-time typing.
+Partial content is appended to the latest assistant message, updating as new chunks arrive.
+The “thinking” animation transitions smoothly into the streaming text.
+Completion & Status:
+Once the assistant finishes, the message is marked as complete (animation stops).
+If an error occurs during streaming, the partial message is preserved with an error indicator.
+4. Message Metadata & Controls
+Timestamps:
+Each message displays a human-readable timestamp (e.g., “08:20”, “Yesterday 14:05”).
+Sender Identification:
+Avatars or icons for user/assistant/system, with clear sender names.
+Copy/Export Controls:
+Each message (or the entire chat) can be copied to clipboard or exported (e.g., PDF, markdown).
+Exported files preserve message order, sender, and timestamps.
+Edit/Retry/Delete:
+Failed user messages can be retried or deleted.
+(Optional) Allow editing of user messages before sending.
+5. Special Features
+Voice Output (TTS):
+Option to play assistant replies via text-to-speech.
+Handles cases where TTS is unavailable gracefully (shows a warning or disables the feature).
+Persistent State:
+Model, role, posture, and other settings are saved per chat and restored on reload.
+Chat history is persisted locally (e.g., localStorage or IndexedDB).
+Error Handling:
+Robust error messages for network, backend, or TTS failures.
+User-friendly explanations and recovery actions.
+Accessibility:
+Keyboard navigation for all controls.
+Screen-reader friendly labels and ARIA attributes.
+High-contrast and dark mode support.
+6. Additional UX Details
+Auto-Scroll:
+Chat window auto-scrolls to the newest message, unless the user has manually scrolled up (in which case, a “jump to latest” button appears).
+Message Grouping:
+Consecutive messages from the same sender are visually grouped to reduce clutter.
+Loading & Empty States:
+Shows a friendly message or illustration when no messages are present.
+Loading indicators when fetching chat history or initializing.
+Summary Table
+| Feature | Description | |---------------------------------|----------------------------------------------------------------------------------------------| | Thinking Animation | Animated indicator while assistant is generating a reply | | Streaming Output | Assistant messages appear incrementally, simulating typing | | Message Types | User, Assistant, System, Error | | Message Controls | Copy, Export, Retry, Delete, Edit (pre-send) | | Persistent Settings | Model, Role, Posture, Chat History | | Voice Output | Text-to-Speech for assistant replies, with graceful fallback | | Error Handling | User-friendly errors, retry options, robust diagnostics | | Accessibility | Keyboard navigation, screen-reader support, high-contrast/dark mode | | Auto-Scroll | Automatically scrolls to latest message, with manual override | | Message Grouping | Consecutive messages from same sender grouped visually | | Timestamps & Metadata | Human-readable timestamps, sender avatars/icons |
+
+Example User Flow
+User types a message and presses “Send”.
+Message appears instantly as “pending”.
+Assistant “thinking” animation starts.
+Assistant reply streams in, replacing the animation.
+User can copy, export, or play the reply via TTS.
+All settings and chat history are persisted for future sessions.
+If you need a more technical breakdown (e.g., React component structure, API contracts, or animation implementation details), let me know!

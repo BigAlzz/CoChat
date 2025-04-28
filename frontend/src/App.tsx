@@ -12,6 +12,7 @@ import { useAudioStore } from './utils/audio'
 import RecordedConversations from './components/RecordedConversations'
 import VoiceSettings from './components/VoiceSettings'
 import MessageInput from './components/MessageInput'
+import cochatLogo from './assets/cochat-logo.png'
 
 const queryClient = new QueryClient()
 
@@ -658,8 +659,10 @@ function App() {
           padding="md"
         >
           <AppShell.Header>
-            <Group justify="space-between" h="100%" px="md">
-              <Title order={3}>CoChat</Title>
+            <Group justify="space-between" align="center" style={{ height: 60, padding: '0 1.5rem' }}>
+              <Group align="center" gap="xs">
+                <img src={cochatLogo} alt="CoChat Logo" style={{ height: 40, marginRight: 12 }} />
+              </Group>
               <Group align="center" gap="lg">
                 <ModeAnimation mode={chatMode} isActive={isModeActive} />
                 {chatMode === 'cyclic' && (
