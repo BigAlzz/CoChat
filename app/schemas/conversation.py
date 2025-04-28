@@ -40,6 +40,8 @@ class ConversationAssistant(ConversationAssistantBase):
 class ConversationBase(BaseModel):
     title: str
     is_autonomous: bool = False
+    mode: str = "individual"
+    panels: Optional[List[Dict]] = None
 
 class ConversationCreate(ConversationBase):
     user_id: int

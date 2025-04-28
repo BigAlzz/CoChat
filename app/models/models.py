@@ -27,6 +27,8 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_autonomous = Column(Boolean, default=False)
+    mode = Column(String, default="individual")
+    panels = Column(JSON, nullable=True)
     
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")

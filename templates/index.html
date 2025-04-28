@@ -33,6 +33,7 @@
             <button class="add-panel-btn" id="addAssistant"><i class="bi bi-plus"></i> Add Panel</button>
             <button class="header-btn" id="helpButton" title="Help"><i class="bi bi-question-circle"></i></button>
             <button class="header-btn" id="settingsButton" onclick="openSettings()"><i class="bi bi-gear"></i></button>
+            <button class="header-btn" id="chatHistoryButton" title="Chat History"><i class="bi bi-clock-history"></i></button>
             </div>
         </div>
 
@@ -265,6 +266,32 @@
         </div>
     </div>
 
+    <!-- Chat History Modal -->
+    <div class="modal fade" id="chatHistoryModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Chat History</h5>
+            <div class="d-flex align-items-center gap-2 flex-wrap" style="flex:1; margin-left: 1rem;">
+              <input type="text" id="chatHistorySearch" class="form-control form-control-sm" placeholder="Search history..." style="max-width: 180px;">
+              <select id="chatHistoryPanelFilter" class="form-select form-select-sm" style="max-width: 120px;"></select>
+              <select id="chatHistorySenderFilter" class="form-select form-select-sm" style="max-width: 120px;"></select>
+              <button class="btn btn-sm btn-outline-secondary" id="exportChatHistoryBtn" title="Export Chat History"><i class="bi bi-download"></i> Export</button>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" style="max-height: 60vh; overflow-y: auto; background: #f8f9fa;">
+            <div id="chatHistoryContent" class="list-group">
+              <!-- Chat history will be loaded here -->
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn header-btn" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let assistantCount = 1;
@@ -376,6 +403,15 @@
             if (helpButton) {
                 helpButton.onclick = function() {
                     const modal = new bootstrap.Modal(document.getElementById('helpModal'));
+                    modal.show();
+                };
+            }
+            
+            // Chat history button handler
+            const chatHistoryButton = document.getElementById('chatHistoryButton');
+            if (chatHistoryButton) {
+                chatHistoryButton.onclick = function() {
+                    const modal = new bootstrap.Modal(document.getElementById('chatHistoryModal'));
                     modal.show();
                 };
             }
@@ -2321,6 +2357,217 @@
             }
           }
         };
+
+        // --- Chat History Modal Logic ---
+        function getAllChatMessages() {
+          // Gather all messages from all panels
+          const allPanels = Array.from(document.querySelectorAll('.chat-panel'));
+          const allMessages = [];
+          allPanels.forEach((panel, panelIndex) => {
+            const panelRole = panel.querySelector('.role-select').value;
+            const panelPosture = panel.querySelector('.posture-select').value;
+            const panelTitle = `${panelPosture} ${panelRole}`;
+            const panelId = panel.id;
+            const messages = Array.from(panel.querySelectorAll('.message'));
+            messages.forEach((message, messageIndex) => {
+              const isUser = message.classList.contains('user-message');
+              const content = message.querySelector('.message-content').textContent;
+              allMessages.push({
+                panel: panelId,
+                panelTitle: panelTitle,
+                messageIndex: messageIndex + 1,
+                role: isUser ? 'user' : 'assistant',
+                sender: isUser ? 'User' : panelTitle,
+                content: content,
+                timestamp: new Date().toLocaleString(), // For now, use current time
+              });
+            });
+          });
+          return allMessages;
+        }
+
+        function renderChatHistory(messages) {
+          const container = document.getElementById('chatHistoryContent');
+          container.innerHTML = '';
+          if (!messages.length) {
+            container.innerHTML = '<div class="text-center text-muted py-4">No chat history found.</div>';
+            return;
+          }
+          messages.forEach(msg => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+            item.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="badge bg-${msg.role === 'user' ? 'primary' : 'success'} me-2">${msg.sender}</span>
+                <span class="small text-muted">${msg.panelTitle}</span>
+              </div>
+              <div class="mb-1">${msg.content}</div>
+              <div class="text-end small text-muted">${msg.timestamp}</div>
+            `;
+            container.appendChild(item);
+          });
+        }
+
+        function updateChatHistoryModal() {
+          let messages = getAllChatMessages();
+          // Apply filters
+          const search = document.getElementById('chatHistorySearch').value.toLowerCase();
+          const panelFilter = document.getElementById('chatHistoryPanelFilter').value;
+          const senderFilter = document.getElementById('chatHistorySenderFilter').value;
+          if (search) {
+            messages = messages.filter(m => m.content.toLowerCase().includes(search));
+          }
+          if (panelFilter && panelFilter !== 'all') {
+            messages = messages.filter(m => m.panel === panelFilter);
+          }
+          if (senderFilter && senderFilter !== 'all') {
+            messages = messages.filter(m => m.role === senderFilter);
+          }
+          renderChatHistory(messages);
+        }
+
+        function populateChatHistoryFilters() {
+          const messages = getAllChatMessages();
+          // Panel filter
+          const panelSelect = document.getElementById('chatHistoryPanelFilter');
+          panelSelect.innerHTML = '<option value="all">All Panels</option>';
+          const uniquePanels = [...new Set(messages.map(m => m.panel))];
+          uniquePanels.forEach(panelId => {
+            const panelTitle = messages.find(m => m.panel === panelId)?.panelTitle || panelId;
+            const opt = document.createElement('option');
+            opt.value = panelId;
+            opt.textContent = panelTitle;
+            panelSelect.appendChild(opt);
+          });
+          // Sender filter
+          const senderSelect = document.getElementById('chatHistorySenderFilter');
+          senderSelect.innerHTML = '<option value="all">All Senders</option>';
+          senderSelect.innerHTML += '<option value="user">User</option><option value="assistant">Assistant</option>';
+        }
+
+        function exportChatHistory() {
+          const messages = getAllChatMessages();
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(messages, null, 2));
+          const dlAnchor = document.createElement('a');
+          dlAnchor.setAttribute('href', dataStr);
+          dlAnchor.setAttribute('download', `cochat-history-${new Date().toISOString().slice(0,10)}.json`);
+          document.body.appendChild(dlAnchor);
+          dlAnchor.click();
+          document.body.removeChild(dlAnchor);
+        }
+
+        // Event listeners for modal controls
+        setTimeout(() => {
+          const searchInput = document.getElementById('chatHistorySearch');
+          const panelFilter = document.getElementById('chatHistoryPanelFilter');
+          const senderFilter = document.getElementById('chatHistorySenderFilter');
+          const exportBtn = document.getElementById('exportChatHistoryBtn');
+          if (searchInput) searchInput.addEventListener('input', updateChatHistoryModal);
+          if (panelFilter) panelFilter.addEventListener('change', updateChatHistoryModal);
+          if (senderFilter) senderFilter.addEventListener('change', updateChatHistoryModal);
+          if (exportBtn) exportBtn.addEventListener('click', exportChatHistory);
+          // When modal opens, refresh filters and content
+          const chatHistoryModal = document.getElementById('chatHistoryModal');
+          if (chatHistoryModal) {
+            chatHistoryModal.addEventListener('show.bs.modal', () => {
+              populateChatHistoryFilters();
+              updateChatHistoryModal();
+            });
+          }
+        }, 500);
+
+        // --- Dynamic Adaptation Prototype ---
+        // Keywords and mapping for posture/model recommendations
+        const postureKeywordMap = [
+          { keywords: ['debug', 'error', 'fix', 'code', 'bug', 'exception'], posture: 'precise', model: 'Code Assistant' },
+          { keywords: ['analyze', 'analysis', 'data', 'statistic', 'trend'], posture: 'analytical', model: 'Data Analyst' },
+          { keywords: ['summarize', 'summary', 'overview', 'recap'], posture: 'concise', model: 'General Assistant' },
+          { keywords: ['creative', 'idea', 'brainstorm', 'imagine'], posture: 'creative', model: 'Writer' },
+          { keywords: ['research', 'study', 'paper', 'reference'], posture: 'academic', model: 'Researcher' },
+          { keywords: ['explain', 'teach', 'clarify', 'instruct'], posture: 'methodical', model: 'General Assistant' },
+          // Add more mappings as needed
+        ];
+
+        // Store user overrides in session
+        const userOverrides = {};
+
+        function analyzeMessageForAdaptation(message, panel) {
+          const lowerMsg = message.toLowerCase();
+          for (const mapping of postureKeywordMap) {
+            if (mapping.keywords.some(kw => lowerMsg.includes(kw))) {
+              return { posture: mapping.posture, model: mapping.model };
+            }
+          }
+          // Default fallback
+          return { posture: null, model: null };
+        }
+
+        function showAdaptationToast(text) {
+          showToast(text, 'success');
+        }
+
+        // Patch sendMessage to include adaptation logic
+        const originalSendMessageWithAdapt = window.sendMessage || sendMessage;
+        window.sendMessage = async function(button) {
+          const panel = button.closest('.chat-panel');
+          const textarea = panel.querySelector('.prompt-input');
+          const message = textarea.value.trim();
+          if (!message) return originalSendMessageWithAdapt.apply(this, arguments);
+
+          // Only adapt if user hasn't locked their choices
+          const panelId = panel.id;
+          if (!userOverrides[panelId]) {
+            const { posture, model } = analyzeMessageForAdaptation(message, panel);
+            let changed = false;
+            // Adapt posture
+            if (posture) {
+              const postureSelect = panel.querySelector('.posture-select');
+              if (postureSelect && postureSelect.value !== posture) {
+                postureSelect.value = posture;
+                changed = true;
+              }
+            }
+            // Adapt model (by label, not value)
+            if (model) {
+              const modelSelect = panel.querySelector('.role-select');
+              if (modelSelect) {
+                for (let i = 0; i < modelSelect.options.length; i++) {
+                  if (modelSelect.options[i].textContent === model && modelSelect.value !== modelSelect.options[i].value) {
+                    modelSelect.value = modelSelect.options[i].value;
+                    changed = true;
+                    break;
+                  }
+                }
+              }
+            }
+            if (changed) {
+              showAdaptationToast('Panel adapted: ' + (posture ? `Posture → ${posture}` : '') + (model ? `, Model → ${model}` : ''));
+            }
+          }
+          // Call original sendMessage
+          return originalSendMessageWithAdapt.apply(this, arguments);
+        };
+
+        // Listen for manual changes to lock user preference
+        setTimeout(() => {
+          document.querySelectorAll('.chat-panel').forEach(panel => {
+            const panelId = panel.id;
+            const postureSelect = panel.querySelector('.posture-select');
+            const modelSelect = panel.querySelector('.role-select');
+            if (postureSelect) {
+              postureSelect.addEventListener('change', () => {
+                userOverrides[panelId] = true;
+                showToast('Manual override: Dynamic adaptation paused for this panel.', 'info');
+              });
+            }
+            if (modelSelect) {
+              modelSelect.addEventListener('change', () => {
+                userOverrides[panelId] = true;
+                showToast('Manual override: Dynamic adaptation paused for this panel.', 'info');
+              });
+            }
+          });
+        }, 1000);
     </script>
 </body>
 </html>

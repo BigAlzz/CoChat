@@ -314,4 +314,18 @@ export const addAssistant = async (
 };
 
 export const getConversationMessages = async () => [];
-export const getConversationSummary = async () => ''; 
+export const getConversationSummary = async () => '';
+
+export const listConversations = async (userId: number) => {
+  const response = await axios.get(`${API_BASE_URL}/conversations`, { params: { user_id: userId } });
+  return response.data;
+};
+
+export const deleteConversation = async (conversationId: number) => {
+  await axios.delete(`${API_BASE_URL}/conversations/${conversationId}`);
+};
+
+export const updateConversation = async (conversationId: number, data: any) => {
+  const response = await axios.put(`${API_BASE_URL}/conversations/${conversationId}`, data);
+  return response.data;
+}; 

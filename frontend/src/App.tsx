@@ -13,6 +13,7 @@ import RecordedConversations from './components/RecordedConversations'
 import VoiceSettings from './components/VoiceSettings'
 import MessageInput from './components/MessageInput'
 import cochatLogo from './assets/cochat-logo.png'
+import { listConversations, deleteConversation, updateConversation } from './services/api'
 
 const queryClient = new QueryClient()
 
@@ -168,6 +169,7 @@ function App() {
   const [isCyclicActive, setIsCyclicActive] = useState(false);
   const lastCyclicResponse = useRef<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [userId] = useState<number>(1); // Replace with real user ID logic
 
   const addChatPanel = () => {
     if (chatPanels.length >= MAX_PANELS) return;
@@ -472,40 +474,62 @@ function App() {
     }
   };
 
-  // Load saved chats on mount
+  // Fetch conversations from backend on mount
   useEffect(() => {
-    const loadedChats = localStorage.getItem('saved_chats');
-    if (loadedChats) {
-      setSavedChats(JSON.parse(loadedChats));
+    async function fetchChats() {
+      try {
+        const chats = await listConversations(userId);
+        setSavedChats(chats);
+      } catch (error) {
+        console.error('Failed to fetch chat history:', error);
+      }
     }
-  }, []);
+    fetchChats();
+  }, [userId]);
 
-  // Save current chat with first question as title
-  const saveCurrentChat = () => {
+  // Save current chat to backend
+  const saveCurrentChat = async () => {
     if (conversationHistory.length === 0) return;
-
-    // Find the first user message to use as the chat title
     const firstUserMessage = conversationHistory.find(msg => msg.role === 'user');
     if (!firstUserMessage) return;
-
-    // Create a shortened version of the first question for the title
     const shortTitle = firstUserMessage.content.length > 50 
       ? firstUserMessage.content.substring(0, 50) + '...'
       : firstUserMessage.content;
-
-    const newChat: SavedChat = {
-      id: Date.now().toString(),
+    const newChat = {
       title: shortTitle,
       timestamp: new Date().toISOString(),
       messages: conversationHistory,
       mode: chatMode,
       panels: chatPanels,
-      firstQuestion: firstUserMessage.content
+      firstQuestion: firstUserMessage.content,
+      user_id: userId
     };
+    try {
+      // If editing an existing chat
+      if (selectedChatId) {
+        await updateConversation(Number(selectedChatId), newChat);
+      } else {
+        // Otherwise, create a new conversation (not shown here, add as needed)
+      }
+      // Refresh chat list
+      const chats = await listConversations(userId);
+      setSavedChats(chats);
+    } catch (error) {
+      console.error('Failed to save chat:', error);
+    }
+  };
 
-    const updatedChats = [...savedChats, newChat];
-    setSavedChats(updatedChats);
-    localStorage.setItem('saved_chats', JSON.stringify(updatedChats));
+  // Delete a saved chat from backend
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      await deleteConversation(Number(chatId));
+      setSavedChats(savedChats.filter(chat => chat.id !== chatId));
+      if (selectedHistoryChat?.id === chatId) {
+        setSelectedHistoryChat(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete chat:', error);
+    }
   };
 
   // Load a saved chat
@@ -517,16 +541,6 @@ function App() {
       setConversationHistory(chat.messages);
       setSelectedChatId(chatId);
       setShowChatHistory(false); // Close the modal after loading
-    }
-  };
-
-  // Delete a saved chat
-  const deleteSavedChat = (chatId: string) => {
-    const updatedChats = savedChats.filter(chat => chat.id !== chatId);
-    setSavedChats(updatedChats);
-    localStorage.setItem('saved_chats', JSON.stringify(updatedChats));
-    if (selectedHistoryChat?.id === chatId) {
-      setSelectedHistoryChat(null);
     }
   };
 
@@ -759,6 +773,7 @@ function App() {
                     onModelSelect={(modelId, role, posture) => {
                       setLastSelectedModel({ modelId, role, posture });
                     }}
+                    onShowHistory={() => setShowChatHistory(true)}
                   />
                 </Box>
               ))}
@@ -845,7 +860,7 @@ function App() {
                         <ContextMenu.Item
                           color="red"
                           leftSection={<IconTrash size={14} />}
-                          onClick={() => deleteSavedChat(chat.id)}
+                          onClick={() => handleDeleteChat(chat.id)}
                         >
                           Delete Chat
                         </ContextMenu.Item>

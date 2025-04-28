@@ -280,4 +280,28 @@ async def create_message_stream(
     return StreamingResponse(
         generate_stream(),
         media_type="text/event-stream"
-    ) 
+    )
+
+@router.get("/conversations")
+def list_conversations(user_id: int, db: Session = Depends(get_db)):
+    return db.query(models.Conversation).filter(models.Conversation.user_id == user_id).all()
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    conv = db.query(models.Conversation).filter(models.Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.delete(conv)
+    db.commit()
+    return {"ok": True}
+
+@router.put("/conversations/{conversation_id}", response_model=schemas.Conversation)
+def update_conversation(conversation_id: int, update: schemas.ConversationBase, db: Session = Depends(get_db)):
+    conv = db.query(models.Conversation).filter(models.Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    for field, value in update.dict(exclude_unset=True).items():
+        setattr(conv, field, value)
+    db.commit()
+    db.refresh(conv)
+    return conv 

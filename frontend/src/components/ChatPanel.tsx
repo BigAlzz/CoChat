@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Paper, Title, Box, Stack, ScrollArea, Button, Text, Group, ActionIcon, Alert, Loader, Menu, Tooltip, Select, Badge } from '@mantine/core';
-import { IconPlus, IconX, IconAlertCircle, IconBrain, IconBookmark, IconSearch, IconVolume, IconVolumeOff, IconTrash, IconPlayerPlay, IconPlayerPause, IconHeadphones, IconPlayerStop } from '@tabler/icons-react';
+import { IconPlus, IconX, IconAlertCircle, IconBrain, IconBookmark, IconSearch, IconVolume, IconVolumeOff, IconTrash, IconPlayerPlay, IconPlayerPause, IconHeadphones, IconPlayerStop, IconHistory } from '@tabler/icons-react';
 import Message from './Message';
 import MessageInput from './MessageInput';
 import ModelSelector from './ModelSelector';
@@ -48,6 +48,7 @@ interface ChatPanelProps {
     posture: string;
   } | null;
   onModelSelect?: (modelId: string, role: string, posture: string) => void;
+  onShowHistory?: () => void;
 }
 
 interface Memory {
@@ -77,6 +78,7 @@ const ChatPanel = ({
   maxCycles = 3,
   initialModel,
   onModelSelect,
+  onShowHistory,
 }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -854,6 +856,16 @@ const ChatPanel = ({
                   Stop
                 </Button>
               )}
+              <Tooltip label="Chat History">
+                <ActionIcon
+                  variant="light"
+                  size="lg"
+                  onClick={onShowHistory}
+                  style={{ marginRight: 4 }}
+                >
+                  <IconHistory size={18} />
+                </ActionIcon>
+              </Tooltip>
               <Tooltip label="Clear Chat">
                 <ActionIcon
                   variant="light"
