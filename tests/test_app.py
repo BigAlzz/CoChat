@@ -5,14 +5,14 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from app import app
+import app as main_app  # Import the module
 import json
 from unittest.mock import patch
 
 @pytest.fixture
 def client():
-    app.config['TESTING'] = True
-    with app.test_client() as client:
+    main_app.app.config['TESTING'] = True  # Access app instance via the module
+    with main_app.app.test_client() as client:
         yield client
 
 def mock_post_response(*args, **kwargs):

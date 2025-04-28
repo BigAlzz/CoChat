@@ -1,13 +1,9 @@
+# Playwright-based browser automation tests will be used instead of Selenium.
+# This file is now a placeholder.
+
 import pytest
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import os
-import time
-from setup_webdriver import setup_chromedriver, download_chromedriver
+
+# No Selenium/WebDriver imports or code below
 
 class TestCoChat:
     @pytest.fixture(scope="function")
