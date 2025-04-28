@@ -51,6 +51,10 @@
                 <div class="panel-header">
                 <h5 class="panel-title"></h5>
                 <div class="panel-header-controls">
+                    <div class="form-check form-switch ms-2">
+                      <input class="form-check-input auto-adapt-toggle" type="checkbox" checked title="Auto-Adapt" id="autoAdaptToggle-1">
+                      <label class="form-check-label small" for="autoAdaptToggle-1">Auto-Adapt</label>
+                    </div>
                     <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                         <i class="bi bi-trash"></i>
                     </button>
@@ -96,6 +100,13 @@
                             <option value="expert">Domain Expert</option>
                             <option value="technical">Technical Expert</option>
                             <option value="writer">Writer</option>
+                            <option value="creative">Creative Partner</option>
+                            <option value="teacher">Teacher</option>
+                            <option value="pm">Project Manager</option>
+                            <option value="support">Customer Support</option>
+                            <option value="legal">Legal Advisor</option>
+                            <option value="medical">Medical Advisor</option>
+                            <option value="finance">Financial Advisor</option>
                         </select>
                         <div class="ms-auto d-flex gap-2">
                             <input type="file" class="file-input" accept="image/*,.pdf" style="display: none;">
@@ -243,6 +254,13 @@
                         <li><b>Domain Expert</b>: Responds with deep, specialized knowledge in a specific field.</li>
                         <li><b>Technical Expert</b>: Delivers detailed technical explanations and solutions.</li>
                         <li><b>Writer</b>: Crafts well-structured, clear, and engaging written content.</li>
+                        <li><b>Creative Partner</b>: Brings creative ideas and storytelling to the conversation.</li>
+                        <li><b>Teacher</b>: Provides clear explanations and educational content.</li>
+                        <li><b>Project Manager</b>: Organizes projects, schedules, and milestones.</li>
+                        <li><b>Customer Support</b>: Helps users troubleshoot issues and provides helpful responses.</li>
+                        <li><b>Legal Advisor</b>: Provides legal advice and helps with compliance.</li>
+                        <li><b>Medical Advisor</b>: Offers medical advice and helps with health-related queries.</li>
+                        <li><b>Financial Advisor</b>: Provides financial advice and helps with budgeting.</li>
                     </ul>
 
                     <hr>
@@ -637,6 +655,10 @@
                 <div class="panel-header">
                     <h5 class="panel-title"></h5>
                     <div class="panel-header-controls">
+                        <div class="form-check form-switch ms-2">
+                          <input class="form-check-input auto-adapt-toggle" type="checkbox" checked title="Auto-Adapt" id="autoAdaptToggle-${id}">
+                          <label class="form-check-label small" for="autoAdaptToggle-${id}">Auto-Adapt</label>
+                        </div>
                         <button class="btn-clear" onclick="clearChat(this)" title="Clear chat">
                             <i class="bi bi-trash"></i>
                         </button>
@@ -675,13 +697,20 @@
                                 <option value="imaginative">Imaginative</option>
                             </select>
                             <select class="role-select" style="max-width: 130px;">
-                                <option value="researcher" ${role === 'researcher' ? 'selected' : ''}>Researcher</option>
-                                <option value="analyst" ${role === 'analyst' ? 'selected' : ''}>Data Analyst</option>
-                                <option value="assistant" ${role === 'assistant' ? 'selected' : ''}>General Assistant</option>
-                                <option value="coder" ${role === 'coder' ? 'selected' : ''}>Code Assistant</option>
-                                <option value="expert" ${role === 'expert' ? 'selected' : ''}>Domain Expert</option>
-                                <option value="technical" ${role === 'technical' ? 'selected' : ''}>Technical Expert</option>
-                                <option value="writer" ${role === 'writer' ? 'selected' : ''}>Writer</option>
+                                <option value="researcher">Researcher</option>
+                                <option value="analyst">Data Analyst</option>
+                                <option value="assistant">General Assistant</option>
+                                <option value="coder">Code Assistant</option>
+                                <option value="expert">Domain Expert</option>
+                                <option value="technical">Technical Expert</option>
+                                <option value="writer">Writer</option>
+                                <option value="creative">Creative Partner</option>
+                                <option value="teacher">Teacher</option>
+                                <option value="pm">Project Manager</option>
+                                <option value="support">Customer Support</option>
+                                <option value="legal">Legal Advisor</option>
+                                <option value="medical">Medical Advisor</option>
+                                <option value="finance">Financial Advisor</option>
                             </select>
                             <div class="ms-auto d-flex gap-2">
                                 <input type="file" class="file-input" accept="image/*,.pdf" style="display: none;">
@@ -2479,13 +2508,20 @@
         // --- Dynamic Adaptation Prototype ---
         // Keywords and mapping for posture/model recommendations
         const postureKeywordMap = [
-          { keywords: ['debug', 'error', 'fix', 'code', 'bug', 'exception'], posture: 'precise', model: 'Code Assistant' },
-          { keywords: ['analyze', 'analysis', 'data', 'statistic', 'trend'], posture: 'analytical', model: 'Data Analyst' },
-          { keywords: ['summarize', 'summary', 'overview', 'recap'], posture: 'concise', model: 'General Assistant' },
-          { keywords: ['creative', 'idea', 'brainstorm', 'imagine'], posture: 'creative', model: 'Writer' },
-          { keywords: ['research', 'study', 'paper', 'reference'], posture: 'academic', model: 'Researcher' },
-          { keywords: ['explain', 'teach', 'clarify', 'instruct'], posture: 'methodical', model: 'General Assistant' },
-          // Add more mappings as needed
+          { keywords: ['debug', 'error', 'fix', 'code', 'bug', 'exception', 'script', 'function'], posture: 'precise', model: 'Code Assistant', roleValue: 'coder' },
+          { keywords: ['analyze', 'analysis', 'data', 'statistic', 'trend', 'dataset', 'chart'], posture: 'analytical', model: 'Data Analyst', roleValue: 'analyst' },
+          { keywords: ['summarize', 'summary', 'overview', 'recap', 'brief'], posture: 'concise', model: 'General Assistant', roleValue: 'assistant' },
+          { keywords: ['creative', 'idea', 'brainstorm', 'imagine', 'story', 'plot'], posture: 'creative', model: 'Creative Partner', roleValue: 'creative' },
+          { keywords: ['research', 'study', 'paper', 'reference', 'citation'], posture: 'academic', model: 'Researcher', roleValue: 'researcher' },
+          { keywords: ['explain', 'teach', 'clarify', 'instruct', 'lesson'], posture: 'methodical', model: 'Teacher', roleValue: 'teacher' },
+          { keywords: ['plan', 'organize', 'schedule', 'project', 'milestone'], posture: 'methodical', model: 'Project Manager', roleValue: 'pm' },
+          { keywords: ['support', 'help', 'issue', 'customer', 'troubleshoot'], posture: 'friendly', model: 'Customer Support', roleValue: 'support' },
+          { keywords: ['legal', 'contract', 'law', 'compliance', 'agreement'], posture: 'professional', model: 'Legal Advisor', roleValue: 'legal' },
+          { keywords: ['medical', 'symptom', 'diagnosis', 'health', 'treatment'], posture: 'professional', model: 'Medical Advisor', roleValue: 'medical' },
+          { keywords: ['finance', 'budget', 'invest', 'money', 'saving', 'stock'], posture: 'analytical', model: 'Financial Advisor', roleValue: 'finance' },
+          { keywords: ['expert', 'specialized', 'field', 'domain'], posture: 'professional', model: 'Domain Expert', roleValue: 'expert' },
+          { keywords: ['technical', 'specification', 'explain', 'architecture'], posture: 'analytical', model: 'Technical Expert', roleValue: 'technical' },
+          { keywords: ['write', 'article', 'blog', 'content', 'compose'], posture: 'creative', model: 'Writer', roleValue: 'writer' },
         ];
 
         // Store user overrides in session
@@ -2495,11 +2531,11 @@
           const lowerMsg = message.toLowerCase();
           for (const mapping of postureKeywordMap) {
             if (mapping.keywords.some(kw => lowerMsg.includes(kw))) {
-              return { posture: mapping.posture, model: mapping.model };
+              return { posture: mapping.posture, model: mapping.model, roleValue: mapping.roleValue };
             }
           }
           // Default fallback
-          return { posture: null, model: null };
+          return { posture: null, model: null, roleValue: null };
         }
 
         function showAdaptationToast(text) {
@@ -2514,10 +2550,12 @@
           const message = textarea.value.trim();
           if (!message) return originalSendMessageWithAdapt.apply(this, arguments);
 
-          // Only adapt if user hasn't locked their choices
+          // Only adapt if user hasn't locked their choices AND auto-adapt is enabled
           const panelId = panel.id;
-          if (!userOverrides[panelId]) {
-            const { posture, model } = analyzeMessageForAdaptation(message, panel);
+          const autoAdaptToggle = panel.querySelector('.auto-adapt-toggle');
+          const autoAdaptEnabled = autoAdaptToggle ? autoAdaptToggle.checked : true;
+          if (!userOverrides[panelId] && autoAdaptEnabled) {
+            const { posture, model, roleValue } = analyzeMessageForAdaptation(message, panel);
             let changed = false;
             // Adapt posture
             if (posture) {
@@ -2527,21 +2565,16 @@
                 changed = true;
               }
             }
-            // Adapt model (by label, not value)
-            if (model) {
+            // Adapt model/role (by value)
+            if (roleValue) {
               const modelSelect = panel.querySelector('.role-select');
-              if (modelSelect) {
-                for (let i = 0; i < modelSelect.options.length; i++) {
-                  if (modelSelect.options[i].textContent === model && modelSelect.value !== modelSelect.options[i].value) {
-                    modelSelect.value = modelSelect.options[i].value;
-                    changed = true;
-                    break;
-                  }
-                }
+              if (modelSelect && modelSelect.value !== roleValue) {
+                modelSelect.value = roleValue;
+                changed = true;
               }
             }
             if (changed) {
-              showAdaptationToast('Panel adapted: ' + (posture ? `Posture → ${posture}` : '') + (model ? `, Model → ${model}` : ''));
+              showAdaptationToast('Panel adapted: ' + (posture ? `Posture → ${posture}` : '') + (model ? `, Role → ${model}` : ''));
             }
           }
           // Call original sendMessage
@@ -2568,6 +2601,73 @@
             }
           });
         }, 1000);
+
+        // Add event listeners for the auto-adapt toggle in all panels
+        setTimeout(() => {
+          document.querySelectorAll('.chat-panel').forEach(panel => {
+            const panelId = panel.id;
+            const autoAdaptToggle = panel.querySelector('.auto-adapt-toggle');
+            if (autoAdaptToggle) {
+              autoAdaptToggle.addEventListener('change', function() {
+                if (this.checked) {
+                  showToast('Auto-Adapt enabled: The app will recommend and auto-select role/posture.', 'info');
+                } else {
+                  showToast('Auto-Adapt disabled: You can freely configure role and posture.', 'info');
+                }
+              });
+            }
+          });
+        }, 1000);
+
+        // --- Live Dynamic Adaptation on Typing ---
+        setTimeout(() => {
+          document.querySelectorAll('.chat-panel').forEach(panel => {
+            const panelId = panel.id;
+            const textarea = panel.querySelector('.prompt-input');
+            const autoAdaptToggle = panel.querySelector('.auto-adapt-toggle');
+            const postureSelect = panel.querySelector('.posture-select');
+            const modelSelect = panel.querySelector('.role-select');
+            if (textarea && postureSelect && modelSelect) {
+              textarea.addEventListener('input', function() {
+                const autoAdaptEnabled = autoAdaptToggle ? autoAdaptToggle.checked : true;
+                if (!userOverrides[panelId] && autoAdaptEnabled) {
+                  const { posture, model, roleValue } = analyzeMessageForAdaptation(this.value, panel);
+                  let changed = false;
+                  // Adapt posture
+                  if (posture && postureSelect.value !== posture) {
+                    postureSelect.value = posture;
+                    changed = true;
+                    postureSelect.classList.add('adapt-flash');
+                    setTimeout(() => postureSelect.classList.remove('adapt-flash'), 500);
+                  }
+                  // Adapt model/role (by value)
+                  if (roleValue && modelSelect.value !== roleValue) {
+                    modelSelect.value = roleValue;
+                    changed = true;
+                    modelSelect.classList.add('adapt-flash');
+                    setTimeout(() => modelSelect.classList.remove('adapt-flash'), 500);
+                  }
+                  if (changed) {
+                    postureSelect.title = 'Recommended by Auto-Adapt';
+                    modelSelect.title = 'Recommended by Auto-Adapt';
+                  } else {
+                    postureSelect.title = '';
+                    modelSelect.title = '';
+                  }
+                }
+              });
+            }
+          });
+        }, 1000);
+        // Add CSS for .adapt-flash
+        const adaptFlashStyle = document.createElement('style');
+        adaptFlashStyle.textContent = `
+          .adapt-flash {
+            box-shadow: 0 0 0 2px #0d6efd, 0 0 8px #0d6efd33;
+            transition: box-shadow 0.3s;
+          }
+        `;
+        document.head.appendChild(adaptFlashStyle);
     </script>
 </body>
 </html>
