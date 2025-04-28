@@ -9,6 +9,19 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
       #helpButton { display: inline-flex !important; }
+      /* Ensure readable text in chat messages */
+      .message-content,
+      .assistant-message,
+      .user-message,
+      .chat-window {
+        color: #222 !important;
+      }
+      /* Ensure assistant message backgrounds are light for dark text */
+      .assistant-message {
+        background: #e3f2fd !important;
+        color: #222 !important;
+      }
+      /* Existing styles below */
     </style>
     <style>
       .panel-header-controls .btn-clear,
@@ -2983,6 +2996,279 @@
           const modal = new bootstrap.Modal(document.getElementById('chatHistoryModal'));
           modal.show();
         }
+
+        // --- Persistent Chat History (JSON Backend) ---
+        // Add search box for filtering chat names
+        setTimeout(() => {
+          const modalHeader = document.querySelector('#chatHistoryModal .modal-header');
+          if (modalHeader && !document.getElementById('chatListSearchBox')) {
+            const searchBox = document.createElement('input');
+            searchBox.type = 'text';
+            searchBox.id = 'chatListSearchBox';
+            searchBox.className = 'form-control form-control-sm ms-3';
+            searchBox.placeholder = 'Search chats...';
+            searchBox.style.maxWidth = '180px';
+            modalHeader.appendChild(searchBox);
+            searchBox.addEventListener('input', fetchChatList);
+          }
+        }, 500);
+
+        async function fetchChatList() {
+          const res = await fetch('/list_chats');
+          let chats = await res.json();
+          const listDiv = document.getElementById('chatHistoryContent');
+          listDiv.innerHTML = '';
+          // Filter by search box
+          const searchBox = document.getElementById('chatListSearchBox');
+          const search = searchBox ? searchBox.value.trim().toLowerCase() : '';
+          if (search) {
+            chats = chats.filter(chat => chat.name.toLowerCase().includes(search));
+          }
+          if (!chats.length) {
+            listDiv.innerHTML = '<div class="text-center text-muted py-4">No saved chats.</div>';
+            return;
+          }
+          chats.forEach(chat => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+              <div>
+                <strong>${chat.name}</strong><br>
+                <small>${new Date(chat.timestamp).toLocaleString()}</small>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="loadChat('${chat.filename}', true)">Restore</button>
+                <button class="btn btn-sm btn-outline-secondary me-2" onclick="loadChat('${chat.filename}', false)">View</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteChat('${chat.filename}')">Delete</button>
+              </div>
+            `;
+            listDiv.appendChild(item);
+          });
+        }
+
+        // loadChat: restoreToMain = true will restore to main UI, false will just view in modal
+        async function loadChat(filename, restoreToMain = false) {
+          const res = await fetch(`/load_chat?filename=${encodeURIComponent(filename)}`);
+          if (!res.ok) {
+            alert('Failed to load chat.');
+            return;
+          }
+          const chat = await res.json();
+          if (!restoreToMain) {
+            // Just view in modal
+            let html = `<h6>${chat.name}</h6><div class='mb-2'><small>${new Date(chat.timestamp).toLocaleString()}</small></div>`;
+            chat.messages.forEach(msg => {
+              html += `<div class='mb-1'><span class='badge bg-${msg.sender === 'user' ? 'primary' : 'success'} me-2'>${msg.sender}</span>${msg.content}<div class='text-end small text-muted'>${msg.timestamp || ''}</div></div>`;
+            });
+            document.getElementById('chatHistoryContent').innerHTML = html;
+            return;
+          }
+          // --- Restore chat into main UI ---
+          // 1. Remove all current panels
+          document.querySelectorAll('.chat-panel').forEach(panel => panel.remove());
+          // 2. Group messages by panel
+          const panelsById = {};
+          chat.messages.forEach(msg => {
+            if (!panelsById[msg.panel]) panelsById[msg.panel] = { messages: [], panelTitle: msg.panelTitle };
+            panelsById[msg.panel].messages.push(msg);
+          });
+          // 3. For each panel, create and populate
+          let panelIndex = 1;
+          for (const panelId in panelsById) {
+            const panelData = panelsById[panelId];
+            const panel = createAssistantPanel(panelIndex);
+            document.getElementById('assistantsContainer').appendChild(panel);
+            // Set role and posture if possible
+            const roleSelect = panel.querySelector('.role-select');
+            const postureSelect = panel.querySelector('.posture-select');
+            if (roleSelect && panelData.panelTitle) {
+              // Try to match role from panelTitle
+              for (let i = 0; i < roleSelect.options.length; i++) {
+                if (panelData.panelTitle.toLowerCase().includes(roleSelect.options[i].textContent.toLowerCase())) {
+                  roleSelect.selectedIndex = i;
+                  break;
+                }
+              }
+            }
+            if (postureSelect && panelData.panelTitle) {
+              for (let i = 0; i < postureSelect.options.length; i++) {
+                if (panelData.panelTitle.toLowerCase().includes(postureSelect.options[i].textContent.toLowerCase())) {
+                  postureSelect.selectedIndex = i;
+                  break;
+                }
+              }
+            }
+            // Set panel title
+            updatePanelTitle(panel);
+            // Add messages
+            const chatWindow = panel.querySelector('.chat-window');
+            panelData.messages.forEach(msg => {
+              const className = msg.sender === 'user' ? 'user-message' : 'assistant-message';
+              const messageDiv = createMessageWithCopy(msg.content, className);
+              chatWindow.appendChild(messageDiv);
+            });
+            setupMessageHandlers(panel);
+            setupUploadHandlers(panel);
+            panelIndex++;
+          }
+          // Close the modal
+          const modal = bootstrap.Modal.getInstance(document.getElementById('chatHistoryModal'));
+          if (modal) modal.hide();
+        }
+
+        async function deleteChat(filename) {
+          if (!confirm('Delete this chat?')) return;
+          const res = await fetch('/delete_chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({filename})
+          });
+          const result = await res.json();
+          if (result.success) {
+            fetchChatList();
+          } else {
+            alert('Failed to delete chat.');
+          }
+        }
+
+        async function saveCurrentChat() {
+          // Gather all messages from all panels (or just the active one if you prefer)
+          const allPanels = Array.from(document.querySelectorAll('.chat-panel'));
+          let messages = [];
+          allPanels.forEach(panel => {
+            const panelTitle = panel.querySelector('.panel-title')?.textContent || panel.id;
+            const chatWindow = panel.querySelector('.chat-window');
+            const msgNodes = Array.from(chatWindow.querySelectorAll('.message'));
+            msgNodes.forEach(msgNode => {
+              const isUser = msgNode.classList.contains('user-message');
+              const content = msgNode.querySelector('.message-content')?.textContent || '';
+              messages.push({
+                sender: isUser ? 'user' : 'assistant',
+                content: content,
+                timestamp: new Date().toISOString(),
+                panel: panel.id,
+                panelTitle: panelTitle
+              });
+            });
+          });
+          let chatName = prompt('Enter a name for this chat:');
+          if (!chatName) return;
+          const res = await fetch('/save_chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: chatName, messages})
+          });
+          const result = await res.json();
+          if (result.success) {
+            alert('Chat saved!');
+            fetchChatList();
+          } else {
+            alert('Failed to save chat.');
+          }
+        }
+
+        // Add Save Chat button to modal footer
+        setTimeout(() => {
+          const footer = document.querySelector('#chatHistoryModal .modal-footer');
+          if (footer && !document.getElementById('saveChatBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'saveChatBtn';
+            btn.className = 'btn btn-success';
+            btn.textContent = 'Save Current Chat';
+            btn.onclick = saveCurrentChat;
+            footer.prepend(btn);
+          }
+          // Patch modal open event
+          const chatHistoryModal = document.getElementById('chatHistoryModal');
+          if (chatHistoryModal) {
+            chatHistoryModal.addEventListener('show.bs.modal', fetchChatList);
+          }
+        }, 500);
+
+        // --- Panel Color Palette ---
+        const PANEL_COLORS = [
+          '#e3f2fd', // blue
+          '#fce4ec', // pink
+          '#e8f5e9', // green
+          '#fff3e0', // orange
+          '#f3e5f5', // purple
+          '#f9fbe7', // lime
+          '#ede7f6', // indigo
+          '#fbe9e7', // deep orange
+        ];
+
+        function getPanelColorClass(index) {
+          return `panel-color-${(index % PANEL_COLORS.length) + 1}`;
+        }
+
+        // Add panel color CSS
+        (function addPanelColorStyles() {
+          let style = document.createElement('style');
+          let css = '';
+          PANEL_COLORS.forEach((color, i) => {
+            css += `.panel-color-${i + 1} .assistant-message { background: ${color} !important; }\n`;
+          });
+          css += `.assistant-message { border-radius: 8px; padding: 8px 12px; margin: 6px 0; }\n`;
+          css += `.user-message { background: #f8f9fa; border-radius: 8px; padding: 8px 12px; margin: 6px 0; }\n`;
+          css += `.collapsed-context { background: #f1f1f1; border-radius: 6px; margin-bottom: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.95em; }\n`;
+          css += `.collapsed-context.collapsed { max-height: 32px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }\n`;
+          css += `.collapsed-context .collapse-toggle { float: right; font-size: 1.1em; color: #888; cursor: pointer; }\n`;
+          style.textContent = css;
+          document.head.appendChild(style);
+        })();
+
+        // Patch createAssistantPanel to assign color class
+        const originalCreateAssistantPanel = window.createAssistantPanel || createAssistantPanel;
+        window.createAssistantPanel = function(id, settings = null) {
+          const panel = originalCreateAssistantPanel(id, settings);
+          panel.classList.add(getPanelColorClass(id - 1));
+          return panel;
+        };
+
+        // Patch restore logic to use color classes
+        // (already handled by createAssistantPanel above)
+
+        // --- Collapsible Previous Panel Info in Sequential Mode ---
+        function insertCollapsedContext(panel, previousContent) {
+          if (!previousContent) return;
+          const chatWindow = panel.querySelector('.chat-window');
+          // Remove any existing collapsed context
+          const old = chatWindow.querySelector('.collapsed-context');
+          if (old) old.remove();
+          // Create new collapsed context
+          const div = document.createElement('div');
+          div.className = 'collapsed-context collapsed';
+          div.innerHTML = `<span>Previous panel's answer: </span><span class='context-content'>${previousContent}</span><span class='collapse-toggle'>▼</span>`;
+          div.onclick = function(e) {
+            if (e.target.classList.contains('collapse-toggle')) {
+              div.classList.toggle('collapsed');
+              div.querySelector('.collapse-toggle').textContent = div.classList.contains('collapsed') ? '▼' : '▲';
+            }
+          };
+          chatWindow.prepend(div);
+        }
+
+        // Patch sequential mode logic to insert collapsed context
+        const originalSendMessageSequential = window.sendMessage || sendMessage;
+        window.sendMessage = async function(button) {
+          const panel = button.closest('.chat-panel');
+          const processingMode = document.getElementById('processingMode').value;
+          if (processingMode === 'sequential') {
+            // Find previous panel's last assistant message
+            const panels = Array.from(document.querySelectorAll('.chat-panel'));
+            const currentIndex = panels.indexOf(panel);
+            if (currentIndex > 0) {
+              const prevPanel = panels[currentIndex - 1];
+              const prevChatWindow = prevPanel.querySelector('.chat-window');
+              const prevMessages = prevChatWindow.querySelectorAll('.assistant-message .message-content');
+              if (prevMessages.length > 0) {
+                const prevContent = prevMessages[prevMessages.length - 1].textContent;
+                insertCollapsedContext(panel, prevContent);
+              }
+            }
+          }
+          return originalSendMessageSequential.apply(this, arguments);
+        };
     </script>
 </body>
 </html>

@@ -59,6 +59,9 @@ MODEL_CACHE = {
 }
 MODEL_CACHE_DURATION = 60  # seconds
 
+CHAT_DIR = "chat_history"
+os.makedirs(CHAT_DIR, exist_ok=True)
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -224,6 +227,8 @@ def prepare_prompt(message, mode, posture, role, previous_messages=None):
     try:
         # Base system message
         system_message = f"You are a {role} with a {posture} communication style. "
+        # Add English-only instruction
+        system_message += "Always respond in English, regardless of the user's input language. "
         
         # Add mode-specific instructions
         if mode == 'sequential':
@@ -1043,6 +1048,70 @@ def chat_history():
         ChatHistory.query.filter_by(user_id=current_user.id).delete()
         db.session.commit()
         return jsonify({'success': True})
+
+@app.route('/save_chat', methods=['POST'])
+@login_required
+def save_chat():
+    data = request.json
+    chat_name = data.get('name')
+    messages = data.get('messages')
+    timestamp = datetime.utcnow().isoformat()
+    username = current_user.username
+    filename = f"chat_{timestamp}_{username}.json"
+    chat_data = {
+        "name": chat_name,
+        "username": username,
+        "timestamp": timestamp,
+        "messages": messages
+    }
+    with open(os.path.join(CHAT_DIR, filename), 'w', encoding='utf-8') as f:
+        json.dump(chat_data, f, ensure_ascii=False, indent=2)
+    return jsonify({"success": True, "filename": filename})
+
+@app.route('/list_chats', methods=['GET'])
+@login_required
+def list_chats():
+    chats = []
+    for fname in os.listdir(CHAT_DIR):
+        if fname.endswith('.json'):
+            with open(os.path.join(CHAT_DIR, fname), 'r', encoding='utf-8') as f:
+                chat = json.load(f)
+                if chat.get("username") == current_user.username:
+                    chats.append({
+                        "name": chat["name"],
+                        "username": chat["username"],
+                        "timestamp": chat["timestamp"],
+                        "filename": fname
+                    })
+    chats.sort(key=lambda x: x["timestamp"], reverse=True)
+    return jsonify(chats)
+
+@app.route('/load_chat', methods=['GET'])
+@login_required
+def load_chat():
+    filename = request.args.get('filename')
+    filepath = os.path.join(CHAT_DIR, filename)
+    if not os.path.exists(filepath):
+        return jsonify({"error": "Chat not found"}), 404
+    with open(filepath, 'r', encoding='utf-8') as f:
+        chat = json.load(f)
+    if chat.get("username") != current_user.username:
+        return jsonify({"error": "Unauthorized"}), 403
+    return jsonify(chat)
+
+@app.route('/delete_chat', methods=['POST'])
+@login_required
+def delete_chat():
+    filename = request.json.get('filename')
+    filepath = os.path.join(CHAT_DIR, filename)
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            chat = json.load(f)
+        if chat.get("username") != current_user.username:
+            return jsonify({"error": "Unauthorized"}), 403
+        os.remove(filepath)
+        return jsonify({"success": True})
+    return jsonify({"error": "File not found"}), 404
 
 if __name__ == '__main__':
     with app.app_context():
